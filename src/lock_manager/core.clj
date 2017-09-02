@@ -107,12 +107,25 @@
  :card-full-read
  [debug]
  (fn [{:keys [db]} [_ tag-id duration-millis]]
-   (if (and (= (::door-unlock-method db) :both)
-            (contains? (::authorized-tags db) tag-id))
-     {:unlock-doors true}
+   #_(cond
 
-     (do (l/info "Unauthorized try for " tag-id)
-         nil))))
+       (and (= (::door-unlock-method db) :both)
+            (contains? (::authorized-tags db) tag-id)
+            (> duration 2000))
+       {:unlock-doors true}
+
+       (contains? (::authorized-tags db) tag-id)
+       {:lock-doors true}
+       
+       :else
+       (do (l/info "Unauthorized try for " tag-id)
+           nil)
+       )
+   #_(if (and (= (::door-unlock-method db) :both)
+            (contains? (::authorized-tags db) tag-id))
+     
+
+     )))
 
 (rf/reg-event-db
  :set-door-unlock-method

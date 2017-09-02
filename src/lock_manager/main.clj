@@ -18,10 +18,10 @@
 
 (defn create-system [opts]
   (comp/system-map
-   :card-reader (case (get-in [:card-reader :val] opts)
+   :card-reader (case (get-in opts [:card-reader :val])
                   "rc522" (make-rc522-card-reader)
                   (make-mock-card-reader))
-   :car (case (get-in [:car :val] opts)
+   :car (case (get-in opts [:car :val])
           "genius" (make-car-genius)
           (make-car-mock))
    :web-server (make-web-server)
@@ -42,6 +42,7 @@
   (alter-var-root #'system (fn [s]
                              (when s (comp/stop s)))))
 
+
 (defn -main
   [& args]
 
@@ -52,7 +53,8 @@
          (reify
            Thread$UncaughtExceptionHandler
            (uncaughtException [this thread throwable]
-             (l/error (format "Uncaught exception %s on thread %s" throwable thread)))))
+             (l/error (format "Uncaught exception %s on thread %s" throwable thread) throwable)
+             (.printStackTrace throwable))))
         
         (start-system opts)
         
