@@ -7,6 +7,7 @@
             [lock-manager.car.genius :refer [make-car-genius]]
             [lock-manager.car.mock :refer [make-car-mock]]
             [lock-manager.core :refer [make-core]]
+            [lock-manager.web-server :refer [make-web-server]]
             [taoensso.timbre :as l]
             [clojure.spec.alpha :as s]
             [clojure.spec.gen.alpha :as sgen]
@@ -23,8 +24,9 @@
    :car (case (get-in [:car :val] opts)
           "genius" (make-car-genius)
           (make-car-mock))
+   :web-server (make-web-server)
    :core (comp/using (make-core)
-                     [:car :card-reader])))
+                     [:car :card-reader :web-server])))
 
 (s/def ::car-opt (s/cat :pref #{"--car"}
                         :val #{"genius" "mock"}))

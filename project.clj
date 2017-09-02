@@ -16,5 +16,4 @@
   :java-source-paths ["src-java"]
   :main ^:skip-aot lock-manager.main
   :target-path "target/%s"
-  :profiles {:uberjar {:aot :all}
-             :dev {:source-paths ["dev"]}})
+  :profiles {:uberjar {:aot :all}})

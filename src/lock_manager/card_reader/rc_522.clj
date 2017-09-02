@@ -24,7 +24,7 @@
                                      (when (= read-status RaspRC522/MI_OK)
                                        (when-let [f @(:read-call-back-fn this)]
                                          (f (into [] tag-id))))
-                                     (Thread/sleep 500)
+                                     (Thread/sleep 200)
                                      (recur (.Select_MirareOne rc522 tag-id)))
                                    (catch InterruptedException ie
                                      (l/info "Stopping RC522 card reader thread")))))]

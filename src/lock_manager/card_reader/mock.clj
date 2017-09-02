@@ -12,20 +12,26 @@
 
   comp/Lifecycle
 
-  (start [this] (assoc this :read-call-back-f (atom nil)))
+  (start [this] (assoc this :read-call-back-fn (atom nil)))
   (stop [this] this)
 
   CardReaderP
   
   (register-read-fn [this f]
-    (reset! (:read-call-back-f this) f)))
+    (reset! (:read-call-back-fn this) f)))
 
 (defn make-mock-card-reader []
   (map->MockCardReader {}))
 
 (defn simulate-read
   ([card-reader-cmp] (simulate-read card-reader-cmp (sgen/generate (s/gen :rfid.tag/id))))
-  ([card-reader-cmp tag-id]
+  ([card-reader-cmp tag-id] (simulate-read card-reader-cmp tag-id 1000))
+  ([card-reader-cmp tag-id millis]
    (when-let [f @(:read-call-back-fn card-reader-cmp)]
-     (f tag-id))))
+     (let [start-time (System/currentTimeMillis)]
+       (loop []
+         (f tag-id)
+         (Thread/sleep 200)
+         (when (< (- (System/currentTimeMillis) start-time) millis)
+           (recur)))))))
 
