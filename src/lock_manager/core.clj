@@ -33,10 +33,10 @@
                           (when-not (Thread/interrupted) (recur))))]
       
       ;;  FXs
-      (rf/reg-fx :lock-doors #(lock-doors car))
+      (rf/reg-fx :lock-doors (fn [_] (lock-doors car)))
       (rf/reg-fx :unlock-doors (fn [_] (unlock-doors car)))
-      (rf/reg-fx :lock-ignition #(lock-ignition car))
-      (rf/reg-fx :unlock-ignition #(unlock-ignition car))
+      (rf/reg-fx :lock-ignition (fn [_] (lock-ignition car)))
+      (rf/reg-fx :unlock-ignition (fn [_] (unlock-ignition car)))
       (rf/reg-fx :answer (fn [[id v]] (deliver (get @answers-proms id) v)))
      #_(rf/reg-cofx :current-time-millis (fn [cofx] (assoc cofx :current-time-millis (System/currentTimeMillis))))
       
@@ -47,7 +47,7 @@
       (register-list-tags-call-back web-server #(dispatch-for-answer answers-proms [:list-tags]))
 
       (rf/dispatch [:initialize-db {::door-unlock-method :both
-                                    ::authorized-tags #{[0 0 0 0 0]}}])
+                                    ::authorized-tags #{[117 100 -8 -62 43] }}])
       (.start ticks-thread)
       (assoc this :ticks-thread ticks-thread)))
   
@@ -106,26 +106,21 @@
 (rf/reg-event-fx
  :card-full-read
  [debug]
- (fn [{:keys [db]} [_ tag-id duration-millis]]
-   #_(cond
+ (fn [{:keys [db]} [_ tag-id duration]]
+   (cond
 
-       (and (= (::door-unlock-method db) :both)
-            (contains? (::authorized-tags db) tag-id)
-            (> duration 2000))
-       {:unlock-doors true}
+     (and (= (::door-unlock-method db) :both)
+          (contains? (::authorized-tags db) tag-id)
+          (< 600 duration 5000))
+     {:unlock-doors true}
 
-       (contains? (::authorized-tags db) tag-id)
-       {:lock-doors true}
-       
-       :else
-       (do (l/info "Unauthorized try for " tag-id)
-           nil)
-       )
-   #_(if (and (= (::door-unlock-method db) :both)
-            (contains? (::authorized-tags db) tag-id))
+     (and (contains? (::authorized-tags db) tag-id)
+          (< duration 1000))
+     {:lock-doors true}
      
-
-     )))
+     (not (contains? (::authorized-tags db) tag-id))
+     (do (l/info "Unauthorized try for " tag-id)
+         nil))))
 
 (rf/reg-event-db
  :set-door-unlock-method

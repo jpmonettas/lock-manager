@@ -5,8 +5,8 @@
             [lock-manager.car.protocols :refer :all])
   (:import com.pi4j.wiringpi.Gpio))
 
-(def lock-door-relay-pin 39)
-(def unlock-door-relay-pin 40)
+(def lock-door-relay-pin 28)
+(def unlock-door-relay-pin 29)
 
 (defrecord Genius [])
 
