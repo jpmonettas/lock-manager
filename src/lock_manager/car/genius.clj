@@ -29,12 +29,16 @@
   (lock-doors [this]
     (Gpio/digitalWrite lock-door-relay-pin Gpio/HIGH)
     (Thread/sleep 1000)
-    (Gpio/digitalWrite lock-door-relay-pin Gpio/LOW))
+    (Gpio/digitalWrite lock-door-relay-pin Gpio/LOW)
+    (l/debug "Wrote on pin " lock-door-relay-pin
+             " for 1 sec"))
   
   (unlock-doors [this]
     (Gpio/digitalWrite unlock-door-relay-pin Gpio/HIGH)
     (Thread/sleep 1000)
-    (Gpio/digitalWrite unlock-door-relay-pin Gpio/LOW))
+    (Gpio/digitalWrite unlock-door-relay-pin Gpio/LOW)
+    (l/debug "Wrote on pin " unlock-door-relay-pin
+             " for 1 sec"))
   
   (lock-ignition [this])
   (unlock-ignition [this])

@@ -4,9 +4,12 @@
             [lock-manager.utils :refer [byte?]]
             [taoensso.timbre :as l]
             [lock-manager.card-reader.protocols :refer :all])
-  (:import com.liangyuen.util.RaspRC522))
+  (:import com.liangyuen.util.RaspRC522
+           com.pi4j.wiringpi.Gpio))
 
-(defrecord RC522 [read-call-back-f read-thread])
+(def running-led-pin 7)
+
+(defrecord RC522 [read-call-back-f read-thread running-thread])
 
 (extend-type RC522
 
@@ -30,17 +33,29 @@
                                    (catch InterruptedException ie
                                      (l/info "Stopping RC522 card reader thread"))
                                    (catch Exception e
-                                     (.printStackTrace e)))))]
+                                     (.printStackTrace e)))))
+          running-thread (Thread. (fn []
+                                    (Gpio/pinMode running-led-pin Gpio/OUTPUT)
+                                    (loop []
+                                      (when-not (Thread/interrupted)
+                                        (Gpio/digitalWrite running-led-pin Gpio/HIGH)
+                                        (Thread/sleep 1000)
+                                        (Gpio/digitalWrite running-led-pin Gpio/LOW)
+                                        (Thread/sleep 1000)
+                                        (recur)))))]
       (.start read-thread)
+      (.start running-thread)
       (l/info "RC522 card reader component started.")
       (assoc this
              :read-thread read-thread
+             :running-thread running-thread
              :read-call-back-f read-call-back-f)))
   
   (stop [this]
     (.interrupt (:read-thread this))
+    (.interrupt (:running-thread this))
     (l/info "RC522 card reader component stopped.")
-    (dissoc this :read-thread :call-back-f))
+    (dissoc this :read-thread :call-back-f :running-thread))
 
   CardReaderP
   
