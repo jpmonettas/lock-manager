@@ -7,21 +7,35 @@
 
 (def lock-door-relay-pin 28)
 (def unlock-door-relay-pin 29)
+(def running-led-pin 7)
 
-(defrecord Genius [])
+(defrecord Genius [running-thread])
 
 (extend-type Genius
 
   comp/Lifecycle
 
   (start [this]
-    (Gpio/wiringPiSetup)
-    (Gpio/pinMode lock-door-relay-pin Gpio/OUTPUT)
-    (Gpio/pinMode unlock-door-relay-pin Gpio/OUTPUT)
-    this)
+    (let [running-thread (Thread. (fn []
+                                    (Gpio/pinMode running-led-pin Gpio/OUTPUT)
+                                    (loop []
+                                      (when-not (Thread/interrupted)
+                                        (Gpio/digitalWrite running-led-pin Gpio/HIGH)
+                                        (Thread/sleep 1000)
+                                        (Gpio/digitalWrite running-led-pin Gpio/LOW)
+                                        (Thread/sleep 1000)
+                                        (recur)))))]
+      
+      (Gpio/wiringPiSetup)
+      (Gpio/pinMode lock-door-relay-pin Gpio/OUTPUT)
+      (Gpio/pinMode unlock-door-relay-pin Gpio/OUTPUT)
+      
+      (.start running-thread)
+      (assoc this :running-thread running-thread)))
   
   (stop [this]
-    this)
+    (.interrupt (:running-thread this))
+    (dissoc this :running-thread))
   
 
   CarP
@@ -46,3 +60,4 @@
 
 (defn make-car-genius []
   (map->Genius {}))
+

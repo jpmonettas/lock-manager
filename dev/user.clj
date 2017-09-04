@@ -4,7 +4,7 @@
             [lock-manager.card-reader.mock :refer [simulate-read]]))
 
 (defn start-system! []
-  (main/start-system {:car "mock" :card-reader "mock"})
+  (main/start-system {:car "mock" :card-reader "serial"})
   #_(cst/instrument))
 
 (defn stop-system! []

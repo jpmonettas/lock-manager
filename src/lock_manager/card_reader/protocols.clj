@@ -2,11 +2,13 @@
   (:require [clojure.spec.alpha :as s]
             [clojure.spec.gen.alpha :as sgen]
             [clojure.test.check.generators :as tcg]
-            [lock-manager.utils :refer [byte?]]))
+            [lock-manager.utils :refer [byte?] :as utils]))
 
 (s/def :rfid.tag/id  (s/with-gen
-                       (s/tuple byte? byte? byte? byte? byte?)
-                       #(sgen/tuple tcg/byte tcg/byte tcg/byte tcg/byte tcg/byte)))
+                       string?
+                       #(sgen/fmap
+                         utils/byte-array->hex-str
+                         (sgen/tuple tcg/byte tcg/byte tcg/byte tcg/byte))))
 
 (defprotocol CardReaderP
   (register-read-fn [_ f]))

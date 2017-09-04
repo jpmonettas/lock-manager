@@ -119,7 +119,7 @@
       (register-list-tags-call-back web-server #(dispatch-for-answer answers-proms [:list-tags]))
 
       (rf/dispatch [:initialize-db {::door-unlock-method :both
-                                    ::authorized-tags #{[117 100 -8 -62 43] }}])
+                                    ::authorized-tags #{"7564F8C2"}}])
       (.start ticks-thread)
       
       (assoc this :ticks-thread ticks-thread)))

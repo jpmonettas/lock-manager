@@ -4,6 +4,7 @@
             [com.stuartsierra.component :as comp]
             [lock-manager.card-reader.mock :refer [make-mock-card-reader]]
             [lock-manager.card-reader.rc-522 :refer [make-rc522-card-reader]]
+            [lock-manager.card-reader.serial :refer [make-serial-card-reader]]
             [lock-manager.car.genius :refer [make-car-genius]]
             [lock-manager.car.mock :refer [make-car-mock]]
             [lock-manager.core :refer [make-core]]
@@ -18,10 +19,11 @@
 
 (defn create-system [opts]
   (comp/system-map
-   :card-reader (case (get-in opts [:card-reader :val])
+   :card-reader (case (:card-reader opts)
                   "rc522" (make-rc522-card-reader)
+                  "serial" (make-serial-card-reader)
                   (make-mock-card-reader))
-   :car (case (get-in opts [:car :val])
+   :car (case (:car opts)
           "genius" (make-car-genius)
           (make-car-mock))
    :web-server (make-web-server)
@@ -31,12 +33,12 @@
 (s/def ::car-opt (s/cat :pref #{"--car"}
                         :val #{"genius" "mock"}))
 (s/def ::card-reader-opt (s/cat :pref #{"--card-reader"}
-                                :val #{"rc522" "mock"}))
+                                :val #{"rc522" "serial" "mock"}))
 (s/def ::args (s/* (s/alt :car ::car-opt
                           :card-reader ::card-reader-opt)))
 
 (defn start-system [opts]
-  (alter-var-root #'system (fn [s] (comp/start (create-system (into {} opts))))))
+  (alter-var-root #'system (fn [s] (comp/start (create-system opts)))))
 
 (defn stop-system []
   (alter-var-root #'system (fn [s]
@@ -46,24 +48,26 @@
 (defn -main
   [& args]
 
-  (let [opts (s/conform ::args args)]
-    (if (not= opts ::s/invalid)
-      (do
-        (Thread/setDefaultUncaughtExceptionHandler
-         (reify
-           Thread$UncaughtExceptionHandler
-           (uncaughtException [this thread throwable]
-             (l/error (format "Uncaught exception %s on thread %s" throwable thread) throwable)
-             (.printStackTrace throwable))))
-        
-        (start-system opts)
+  (let [conformed-opts (s/conform ::args args)]
+    (if (not= conformed-opts ::s/invalid)
+      (let [opts (into {} conformed-opts)
+            opts' {:car (-> opts :car :val) 
+                  :card-reader (-> opts :card-reader :val)}]
+        (start-system opts')
         
         (l/info "System started.")
         
         (nrepl/start-server :handler cider-nrepl-handler
                             :port 7778
                             :bind "0.0.0.0")
-        (l/info "Nrepl server started."))
+        (l/info "Nrepl server started.")
+
+        (Thread/setDefaultUncaughtExceptionHandler
+         (reify
+           Thread$UncaughtExceptionHandler
+           (uncaughtException [this thread throwable]
+             (l/error (format "Uncaught exception %s on thread %s" throwable thread) throwable)
+             (.printStackTrace throwable)))))
 
       ;; (= opts ::s/invalid)
       (l/error (s/explain-str ::args args)))))
