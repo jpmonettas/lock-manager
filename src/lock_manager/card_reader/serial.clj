@@ -15,12 +15,11 @@
   comp/Lifecycle
 
   (start [this]
-    (l/info "Starting Serial card reader component...")
     (let [serial-port (serial/open "/dev/ttyACM0" :baud-rate 9600)
           read-call-back-f (atom nil)
           serial-port-reader (atom nil)
           read-thread (Thread. (fn []
-                                 (l/info "Starting Serial card reader thread")
+                                 (l/info "[Serial] card reader thread started")
                                  (let [reader @serial-port-reader]
                                   (try
                                     (loop [last-send (System/currentTimeMillis)]
@@ -34,7 +33,7 @@
                                             (recur now))
                                           (recur last-send))))
                                     (catch InterruptedException ie
-                                      (l/info "Stopping Serial card reader thread"))
+                                      (l/info "[Serial] card reader thread stopped"))
                                     (catch Exception e
                                       (.printStackTrace e))))))]
       
@@ -43,7 +42,7 @@
                                     (reset! serial-port-reader (io/reader stream))
                                     (.start read-thread)))
       
-      (l/info "Serial card reader component started.")
+      (l/info "[Serial] card reader component started.")
       (assoc this
              :read-thread read-thread
              :serial-port serial-port
@@ -52,13 +51,13 @@
   (stop [this]
     (.interrupt (:read-thread this))
     (serial/close! (:serial-port this))
-    (l/info "Serial card reader component stopped.")
+    (l/info "[Serial] card reader component stopped.")
     (dissoc this :read-thread :call-back-f :serial-port))
 
   CardReaderP
   
   (register-read-fn [this f]
-    (l/info "Registeder card reader callback fn")
+    (l/info "[Serial] Registeder card reader callback fn")
     (reset! (:read-call-back-f this) f)))
 
 (defn make-serial-card-reader []

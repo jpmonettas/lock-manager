@@ -7,8 +7,12 @@
 
 (extend-type MockCar
   comp/Lifecycle
-  (start [this] this)
-  (stop [this] this)
+  (start [this]
+    (l/info "[MockCar] component started")
+    this)
+  (stop [this]
+    (l/info "[MockCar] component stopped")
+    this)
   
   CarP
   (lock-doors [_] (l/info "Locked car door"))

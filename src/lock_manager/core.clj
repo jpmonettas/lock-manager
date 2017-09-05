@@ -8,7 +8,8 @@
             [com.stuartsierra.component :as comp]
             [clojure.spec.alpha :as s]
             [taoensso.timbre :as l]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [clojure.core.async :as async]))
 
 
 
@@ -73,30 +74,46 @@
   )
 
 
-(defrecord Core [car card-reader web-server ticks-thread])
+(defrecord Core [car card-reader web-server ticks-thread re-frame-ch])
 
-(defn dispatch-for-answer [answers-proms-a [ev-id & ev-args]]
+(defn dispatch-for-answer [answers-proms-a re-frame-ch [ev-id & ev-args]]
   (let [p (promise)
         pid (rand-int 1000)]
     (swap! answers-proms-a assoc pid p)
-    (rf/dispatch (into [ev-id pid] ev-args))
+    (async/>!! re-frame-ch (into [ev-id pid] ev-args))
     @p))
+
+(defn signal-started [car-cmp]
+  (lock-doors car-cmp)
+  (Thread/sleep 2000)
+  (unlock-doors car-cmp))
 
 (extend-type Core
 
   comp/Lifecycle
   
-  (start [{:keys [car card-reader web-server ticks-thread] :as this}]
+  (start [{:keys [car card-reader web-server] :as this}]
     (let [answers-proms (atom {})
+          re-frame-ch (async/chan)
           ticks-thread (Thread.
                         (fn []
-                          (Thread/sleep 2000) ;; don't start dispatching ticks immediately because of
-                                              ;; clojure.lang.ExceptionInfo: re-frame: router state transition not found. :scheduled :finish-run
-                          (loop []
-                           (rf/dispatch [:tick (System/currentTimeMillis)])
-                           (Thread/sleep 100)
-                           (when-not (Thread/interrupted) (recur)))))]
+                          (try
+                            (l/info "[Core] Ticks thread started")
+                            (loop []
+                              (when (Thread/interrupted) (throw (InterruptedException.)))
+                              (async/>!! re-frame-ch [:tick (System/currentTimeMillis)])
+                              (Thread/sleep 100)
+                              (recur))
+                           (catch InterruptedException ie
+                             (l/info "[Core] Ticks thread stopped")))))]
 
+      ;; Dispatch all re-frame events sequentially to avoid
+      ;; clojure.lang.ExceptionInfo: re-frame: router state transition not found. :scheduled :finish-run
+      (async/go-loop []
+        (when-let [ev (async/<! re-frame-ch)]
+          (rf/dispatch ev)
+          (recur)))
+      
       ;; Register Events
       (rf/reg-event-db :initialize-db [debug] initialize-db-ev)
       (rf/reg-event-fx :list-tags [debug] list-tags-ev)
@@ -113,20 +130,27 @@
       (rf/reg-fx :answer (fn [[id v]] (deliver (get @answers-proms id) v)))
      
       ;; Events from card reader
-      (register-read-fn card-reader #(rf/dispatch [:card-read % (System/currentTimeMillis)]))
+      (register-read-fn card-reader #(async/>!! re-frame-ch [:card-read % (System/currentTimeMillis)]))
 
       ;; Events from web server
       (register-list-tags-call-back web-server #(dispatch-for-answer answers-proms [:list-tags]))
 
-      (rf/dispatch [:initialize-db {::door-unlock-method :both
-                                    ::authorized-tags #{"7564F8C2"}}])
+      (async/>!! re-frame-ch [:initialize-db {::door-unlock-method :both
+                                              ::authorized-tags #{"7564F8C2"}}])
       (.start ticks-thread)
+
+      (signal-started car)
       
-      (assoc this :ticks-thread ticks-thread)))
+      (l/info "[Core] component started.")
+      (assoc this
+             :ticks-thread ticks-thread
+             :re-frame-ch re-frame-ch)))
   
-  (stop [{:keys [ticks-thread] :as this}]
+  (stop [{:keys [ticks-thread re-frame-ch] :as this}]
+    (async/close! re-frame-ch)
     (.interrupt ticks-thread)
-    (dissoc this :ticks-thread)))
+    (l/info "[Core] component stopped.")
+    (dissoc this :ticks-thread :re-frame-ch)))
 
 (defn make-core []
   (map->Core {}))

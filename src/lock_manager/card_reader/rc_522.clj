@@ -14,12 +14,11 @@
   comp/Lifecycle
 
   (start [this]
-    (l/info "Starting RC522 card reader component...")
     (let [rc522 (RaspRC522.)
           tag-id (byte-array 5)
           read-call-back-f (atom nil)
           read-thread (Thread. (fn []
-                                 (l/info "Starting RC522 card reader thread")
+                                 (l/info "[RC522] card reader thread started")
                                  (try
                                    (loop [read-status nil]
                                      (when (Thread/interrupted) (throw (InterruptedException.)))
@@ -29,24 +28,24 @@
                                      (Thread/sleep 200)
                                      (recur (.Select_MirareOne rc522 tag-id)))
                                    (catch InterruptedException ie
-                                     (l/info "Stopping RC522 card reader thread"))
+                                     (l/info "[RC522] card reader thread stopped"))
                                    (catch Exception e
                                      (.printStackTrace e)))))]
       (.start read-thread)
-      (l/info "RC522 card reader component started.")
+      (l/info "[RC522] card reader component started.")
       (assoc this
              :read-thread read-thread
              :read-call-back-f read-call-back-f)))
   
   (stop [this]
     (.interrupt (:read-thread this))
-    (l/info "RC522 card reader component stopped.")
+    (l/info "[RC522] card reader component stopped.")
     (dissoc this :read-thread :call-back-f))
 
   CardReaderP
   
   (register-read-fn [this f]
-    (l/info "Registeder card reader callback fn")
+    (l/info "[RC522] Registeder card reader callback fn")
     (reset! (:read-call-back-f this) f)))
 
 (defn make-rc522-card-reader []

@@ -12,8 +12,14 @@
 
   comp/Lifecycle
 
-  (start [this] (assoc this :read-call-back-fn (atom nil)))
-  (stop [this] this)
+  (start [this]
+    (l/info "[MockCardReader] component started")
+    (assoc this :read-call-back-fn (atom nil)))
+
+  (stop [this]
+    (l/info "[MockCardReader] component stopped")
+    this)
+  
 
   CardReaderP
   

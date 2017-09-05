@@ -24,14 +24,14 @@
     (let [call-backs (atom {})
           http-server (httpkit-server/run-server (-> (build-handler call-backs))
                                                  {:port 1234})]
-      (l/info "Started WebServer component (port: 1234)")
+      (l/info "[WebServer]  component started (port: 1234)")
      (assoc this
             :call-backs call-backs
             :server http-server)))
   
   (stop [this]
     ((:server this))
-    (l/info "Stopped WebServer component")
+    (l/info "[WebServer] component stopped")
     (dissoc this :server :call-backs))
 
   WebServerP

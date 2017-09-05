@@ -55,7 +55,7 @@
                   :card-reader (-> opts :card-reader :val)}]
         (start-system opts')
         
-        (l/info "System started.")
+        (l/info "System started with " opts')
         
         (nrepl/start-server :handler cider-nrepl-handler
                             :port 7778
