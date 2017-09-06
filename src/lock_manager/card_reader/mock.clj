@@ -29,6 +29,7 @@
 (defn make-mock-card-reader []
   (map->MockCardReader {}))
 
+
 (defn simulate-read
   ([card-reader-cmp] (simulate-read card-reader-cmp (sgen/generate (s/gen :rfid.tag/id))))
   ([card-reader-cmp tag-id] (simulate-read card-reader-cmp tag-id 1000))
@@ -39,5 +40,5 @@
          (f tag-id)
          (Thread/sleep 200)
          (when (< (- (System/currentTimeMillis) start-time) millis)
-           (recur)))))))
-
+           (recur))))
+     (Thread/sleep 1000))))

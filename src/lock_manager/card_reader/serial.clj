@@ -52,7 +52,10 @@
     (.interrupt (:read-thread this))
     (serial/close! (:serial-port this))
     (l/info "[Serial] card reader component stopped.")
-    (dissoc this :read-thread :call-back-f :serial-port))
+    (assoc this
+           :read-thread nil
+           :call-back-f nil
+           :serial-port nil))
 
   CardReaderP
   

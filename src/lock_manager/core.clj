@@ -11,7 +11,11 @@
             [clojure.string :as str]
             [clojure.core.async :as async]))
 
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; IMPORTANT! : Never call re-frame/dispatch directly, put the events in       ;;
+;; re-frame channel so all events will be dispatched to re-frame in one thread ;;
+;; ordered.                                                                    ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;
 ;; Db Spec ;;
@@ -125,8 +129,6 @@
       ;; Register FXs
       (rf/reg-fx :lock-doors (fn [_] (lock-doors car)))
       (rf/reg-fx :unlock-doors (fn [_] (unlock-doors car)))
-      (rf/reg-fx :lock-ignition (fn [_] (lock-ignition car)))
-      (rf/reg-fx :unlock-ignition (fn [_] (unlock-ignition car)))
       (rf/reg-fx :answer (fn [[id v]] (deliver (get @answers-proms id) v)))
      
       ;; Events from card reader
@@ -139,7 +141,8 @@
                                               ::authorized-tags #{"7564F8C2"}}])
       (.start ticks-thread)
 
-      (signal-started car)
+      ;; commented out this because interfier with testing
+      #_(signal-started car)
       
       (l/info "[Core] component started.")
       (assoc this
@@ -150,7 +153,9 @@
     (async/close! re-frame-ch)
     (.interrupt ticks-thread)
     (l/info "[Core] component stopped.")
-    (dissoc this :ticks-thread :re-frame-ch)))
+    (assoc this
+           :ticks-thread nil
+           :re-frame-ch nil)))
 
 (defn make-core []
   (map->Core {}))

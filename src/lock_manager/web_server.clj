@@ -8,7 +8,7 @@
   (register-list-tags-call-back [_ f])
   (register-rm-tag-call-back [_ f]))
 
-(defrecord WebServer [server call-backs])
+(defrecord WebServer [server handler call-backs opts])
 
 (defn build-handler [call-backs-a]
   (fn [req]
@@ -22,17 +22,23 @@
 
   (start [this]
     (let [call-backs (atom {})
-          http-server (httpkit-server/run-server (-> (build-handler call-backs))
-                                                 {:port 1234})]
-      (l/info "[WebServer]  component started (port: 1234)")
+          handler (-> (build-handler call-backs))
+          http-server (when (-> this :opts :start-server?)
+                        (httpkit-server/run-server handler
+                                                   {:port 1234}))]
+      (l/info "[WebServer]  component started")
      (assoc this
             :call-backs call-backs
+            :handler handler
             :server http-server)))
   
   (stop [this]
-    ((:server this))
+    (when-let [stop-fn (:server this)]
+     (stop-fn))
     (l/info "[WebServer] component stopped")
-    (dissoc this :server :call-backs))
+    (assoc this
+           :server nil
+           :call-backs nil?))
 
   WebServerP
   
@@ -45,5 +51,5 @@
   (register-rm-tag-call-back [this f]
     (swap! (:call-backs this) assoc :rm-tag f)))
 
-(defn make-web-server []
-  (map->WebServer {}))
+(defn make-web-server [opts]
+  (map->WebServer {:opts opts}))

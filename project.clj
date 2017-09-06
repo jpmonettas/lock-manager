@@ -15,7 +15,7 @@
                  [org.clojure/tools.namespace "0.3.0-alpha4"]
                  [clj-serial "2.0.4-SNAPSHOT"]
                  [org.clojure/core.async "0.3.443"]]
-  :java-source-paths ["src-java"]
   :main ^:skip-aot lock-manager.main
   :target-path "target/%s"
-  :profiles {:uberjar {:aot :all}})
+  :profiles {:uberjar {:aot :all}
+             :dev {:source-paths ["dev"]}})

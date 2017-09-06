@@ -5,8 +5,8 @@
             [lock-manager.car.protocols :refer :all])
   (:import com.pi4j.wiringpi.Gpio))
 
-(def lock-door-relay-pin 3)
-(def unlock-door-relay-pin 2)
+(def lock-door-relay-pin 2)
+(def unlock-door-relay-pin 3)
 (def running-led-pin 0)
 
 (defrecord Genius [running-thread])
@@ -43,27 +43,33 @@
   (stop [this]
     (.interrupt (:running-thread this))
     (l/info "[Genius] component stopped")
-    (dissoc this :running-thread))
+    (assoc this :running-thread nil))
   
 
   CarP
 
   (lock-doors [this]
     (Gpio/digitalWrite lock-door-relay-pin Gpio/HIGH)
-    (Thread/sleep 500)
+    (Thread/sleep 1000)
     (Gpio/digitalWrite lock-door-relay-pin Gpio/LOW)
-    (l/debug "Wrote on pin " lock-door-relay-pin
+    (l/debug "Lock Wrote on pin " lock-door-relay-pin
              " for .5 sec"))
   
   (unlock-doors [this]
     (Gpio/digitalWrite unlock-door-relay-pin Gpio/HIGH)
-    (Thread/sleep 500)
+    (Thread/sleep 1000)
     (Gpio/digitalWrite unlock-door-relay-pin Gpio/LOW)
-    (l/debug "Wrote on pin " unlock-door-relay-pin
+    (l/debug "Unlock Wrote on pin " unlock-door-relay-pin
              " for .5 sec"))
   
-  (lock-ignition [this])
-  (unlock-ignition [this]))
+  (register-break-on-fn [this f])
+  (register-break-off-fn [this f])
+  
+  (switch-power-on [this])
+  (switch-power-off [this])
+  
+  (register-button-off-fn [this f])
+  (register-button-on-fn [this f]))
 
 (defn make-car-genius []
   (map->Genius {}))
