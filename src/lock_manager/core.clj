@@ -121,7 +121,7 @@
       ;; Register Events
       (rf/reg-event-db :initialize-db [debug] initialize-db-ev)
       (rf/reg-event-fx :list-tags [debug] list-tags-ev)
-      (rf/reg-event-db :card-read card-read-ev)
+      (rf/reg-event-db :card-read [debug] card-read-ev)
       (rf/reg-event-fx :tick tick-ev)
       (rf/reg-event-fx :card-full-read [debug] card-full-read-ev)
       (rf/reg-event-db :set-door-unlock-method [debug] set-door-unlock-method-ev)

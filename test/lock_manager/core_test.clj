@@ -21,8 +21,10 @@
 ;; Integration tests ;;
 ;;;;;;;;;;;;;;;;;;;;;;;
 
+;; Every time start with a card locked and power-off
 (defn wrap-stop-start-system [t]
   (alter-var-root #'test-system comp/start)
+  (Thread/sleep 1000)
   (lock-doors (:car test-system))
   (switch-power-off (:car test-system))
   (t)
@@ -30,7 +32,16 @@
 
 (use-fixtures :each wrap-stop-start-system)
 
-(deftest test-car-should-unlock
+;; Tests
+
+(deftest test-car-should-unlock-with-1500-card-swap
   (let [{:keys [card-reader car]} test-system]
     (simulate-read card-reader "7564F8C2" 1500) ;; should unlock door
     (is (not (locked? car)))))
+
+(deftest test-car-should-not-unlock-with-300-card-swap
+  (let [{:keys [card-reader car]} test-system]
+    (simulate-read card-reader "7564F8C2" 300) ;; should NOT unlock door
+    (is (locked? car))))
+
+
