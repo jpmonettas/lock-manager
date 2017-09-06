@@ -18,4 +18,5 @@
   :main ^:skip-aot lock-manager.main
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}
-             :dev {:source-paths ["dev"]}})
+             :dev {:source-paths ["dev"]
+                   :dependencies [[inspectable "0.2.2"]]}})
