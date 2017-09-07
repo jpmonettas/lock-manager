@@ -32,14 +32,14 @@
     (reset! locked? false)
     (l/info "Unlocked car door"))
   
-  (register-break-on-fn [this f] (swap! (:call-backs this) assoc :brake-on f))
-  (register-break-off-fn [this f] (swap! (:call-backs this) assoc :brake-off f))
+  (register-break-pressed-fn [this f] (swap! (:call-backs this) assoc :brake-pressed f))
+  (register-break-released-fn [this f] (swap! (:call-backs this) assoc :brake-released f))
   
   (switch-power-on [{:keys [power-on?]}] (reset! power-on? true))
   (switch-power-off [{:keys [power-on?]}] (reset! power-on? false))
   
-  (register-button-off-fn [this f] (swap! (:call-backs this) assoc :button-off f))
-  (register-button-on-fn [this f] (swap! (:call-backs this) assoc :button-on f)))
+  (register-button-released-fn [this f] (swap! (:call-backs this) assoc :button-pressed f))
+  (register-button-pressed-fn [this f] (swap! (:call-backs this) assoc :button-released f)))
 
 (defn make-car-mock []
   (map->MockCar {}))

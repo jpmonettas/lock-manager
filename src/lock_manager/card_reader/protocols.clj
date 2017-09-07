@@ -11,4 +11,5 @@
                          (sgen/tuple tcg/byte tcg/byte tcg/byte tcg/byte))))
 
 (defprotocol CardReaderP
-  (register-read-fn [_ f]))
+  (register-card-on-reader-fn [_ f])
+  (register-card-off-reader-fn [_ f]))

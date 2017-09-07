@@ -4,12 +4,12 @@
   (lock-doors [_])
   (unlock-doors [_])
 
-  (register-break-on-fn [_ f])
-  (register-break-off-fn [_ f])
+  (register-break-pressed-fn [_ f])
+  (register-break-released-fn [_ f])
   
   (switch-power-on [_])
   (switch-power-off [_])
   
-  (register-button-off-fn [_ f])
-  (register-button-on-fn [_ f]))
+  (register-button-released-fn [_ f])
+  (register-button-pressed-fn [_ f]))
 

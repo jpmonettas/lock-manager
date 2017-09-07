@@ -5,10 +5,16 @@
             [lock-manager.card-reader.protocols :refer :all]
             [serial.core :as serial]
             [serial.util :as serial-util]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.core.async :as async]))
 
 
-(defrecord Serial [read-call-back-f read-thread serial-port])
+(defrecord Serial [call-backs reads-ch serial-port])
+
+(defn reader-loop [reads-ch reader]
+  (async/go-loop []
+    (when (async/>! reads-ch (.readLine reader))
+      (recur))))
 
 (extend-type Serial
 
@@ -16,52 +22,50 @@
 
   (start [this]
     (let [serial-port (serial/open "/dev/ttyACM0" :baud-rate 9600)
-          read-call-back-f (atom nil)
-          serial-port-reader (atom nil)
-          read-thread (Thread. (fn []
-                                 (l/info "[Serial] card reader thread started")
-                                 (let [reader @serial-port-reader]
-                                  (try
-                                    (loop [last-send (System/currentTimeMillis)]
-                                      (let [tag-id (.readLine reader)
-                                            now (System/currentTimeMillis)]
-                                        (if (and @read-call-back-f
-                                                 (> (- now last-send)
-                                                    200))
-                                          (do
-                                            (@read-call-back-f tag-id)
-                                            (recur now))
-                                          (recur last-send))))
-                                    (catch InterruptedException ie
-                                      (l/info "[Serial] card reader thread stopped"))
-                                    (catch Exception e
-                                      (.printStackTrace e))))))]
+          call-backs (atom {})
+          reads-ch (async/chan)]
       
       (serial/listen! serial-port (fn [stream]
                                     (l/info "Got first data on serial")
-                                    (reset! serial-port-reader (io/reader stream))
-                                    (.start read-thread)))
+                                    (reader-loop reads-ch (io/reader stream))))
+
+      (async/go-loop []
+        (when-let [tid (async/<! reads-ch)]
+         (when-let [on-reader (get @call-backs :on-reader)]
+           (on-reader tid))
+
+         (let [first-read (System/currentTimeMillis)]
+           (loop []
+             (let [t (async/timeout 300)
+                   [tag-id c] (async/alts! [reads-ch t])]
+               (if (and (= c reads-ch) (= tid tag-id))
+                 (recur)
+                 (when-let [off-reader (get @call-backs :off-reader)]
+                   (off-reader tid (- (System/currentTimeMillis) first-read)))))))
+         (recur)))
       
       (l/info "[Serial] card reader component started.")
       (assoc this
-             :read-thread read-thread
+             :reads-ch reads-ch
              :serial-port serial-port
-             :read-call-back-f read-call-back-f)))
+             :call-backs call-backs)))
   
   (stop [this]
-    (.interrupt (:read-thread this))
+    (async/close! (:reads-ch this))
     (serial/close! (:serial-port this))
     (l/info "[Serial] card reader component stopped.")
     (assoc this
-           :read-thread nil
-           :call-back-f nil
+           :reads-ch nil
+           :call-backs nil
            :serial-port nil))
 
   CardReaderP
-  
-  (register-read-fn [this f]
-    (l/info "[Serial] Registeder card reader callback fn")
-    (reset! (:read-call-back-f this) f)))
+
+  (register-card-on-reader-fn [this f]
+    (swap! (:call-backs this) assoc :on-reader f))
+
+  (register-card-off-reader-fn [this f]
+    (swap! (:call-backs this) assoc :off-reader f)))
 
 (defn make-serial-card-reader []
   (map->Serial {}))

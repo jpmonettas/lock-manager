@@ -23,14 +23,16 @@
 
 (s/def :db/door-unlock-method #{:both :only-key})
 (s/def :db/authorized-tags (s/coll-of :rfid.tag/id :kind set?))
-(s/def :db.card-reader/first-read int?)
-(s/def :db.card-reader/last-read int?)
-(s/def :db/card-reader (s/keys :req-un [:rfid.tag/id
-                                        :db.card-reader/first-read]
-                               :opt-un [:db/card-reader/last-read]))
+(s/def :db/reading-tag :rfid.tag/id)
+(s/def :db/break-pressed boolean?)
+(s/def :db/button-pressed boolean?)
+(s/def :db/car-power-on? boolean?)
 (s/def ::db (s/keys :req-un [:db/door-unlock-method
                              :db/authorized-tags]
-                    :opt-un [:db/card-reader]))
+                    :opt-un [:db/reading-tag
+                             :db/break-pressed?
+                             :db/button-pressed?
+                             :db/car-power-on?]))
 
 ;; TODO! Store db middleware
 
@@ -44,44 +46,62 @@
 (defn list-tags-ev [{:keys [db]} [_ answer-id]]
   {:answer [answer-id (:authorized-tags db)]})
 
-(defn card-read-ev [db [_ tag-id time-millis]]
-  (let [db' (assoc-in db [:card-reader :tag-id] tag-id)]
-    (if (-> db' :card-reader :first-read)
-      (assoc-in db' [:card-reader :last-read] time-millis)
-      (assoc-in db' [:card-reader :first-read] time-millis))))
+(defn card-on-reader-ev [db [_ tag-id]]
+  (assoc db :reading-tag tag-id))
 
-(defn tick-ev [{:keys [db]} [_ time-millis]]
-  (when-let [first-read (-> db :card-reader :first-read)]
-    (let [last-read (or (-> db :card-reader :last-read) first-read)
-          reading-time  (- last-read first-read)]
-      (when (> (- time-millis last-read) 500)
-        {:db (dissoc db :card-reader)
-         :dispatch [:card-full-read (-> db :card-reader :tag-id) reading-time]}))))
+(defn card-off-reader-ev [{:keys [db]} [_ tag-id duration]]
+  (l/debug tag-id " " duration " " db)
+  (-> (cond
+        
+        (and (= (:door-unlock-method db) :both)
+             (contains? (:authorized-tags db) tag-id)
+             (< 600 duration 5000))
+        {:unlock-doors true}
 
-(defn card-full-read-ev [{:keys [db]} [_ tag-id duration]]
-  (cond
+        (and (contains? (:authorized-tags db) tag-id)
+             (< duration 1000))
+        {:lock-doors true}
+        
+        (not (contains? (:authorized-tags db) tag-id))
+        (do (l/info "Unauthorized try for " tag-id)
+            nil))
+      (assoc :db (dissoc db :reading-tag))))
 
-    (and (= (:door-unlock-method db) :both)
-         (contains? (:authorized-tags db) tag-id)
-         (< 600 duration 5000))
-    {:unlock-doors true}
-
-    (and (contains? (:authorized-tags db) tag-id)
-         (< duration 1000))
-    {:lock-doors true}
-    
-    (not (contains? (:authorized-tags db) tag-id))
-    (do (l/info "Unauthorized try for " tag-id)
-        nil)))
-
-(defn set-door-unlock-method-ev [db [_ unlock-method]]
+(defn set-door-unlock-method-ev
+  "For setting a new doors unlock method."
+  [db [_ unlock-method]]
   (assoc db :door-unlock-method unlock-method))
+
+(defn button-pressed-ev
+  "Every time panel button is pressed."
+  [db _]
+  (assoc db :button-pressed? true))
+
+(defn button-released-ev
+  "Every time panel button is released."
+  [{:keys [db]} [_ duration]]
+  (let [{:keys [car-power-on?]} db
+        db' (assoc-in [:db :button-pressed?] false)]
+    (if (not car-power-on?)
+      {:db (assoc db' :power-on? true)
+       :switch-power-on true}
+      {:db db'})))
+
+(defn break-pressed-ev
+  "Every time the car brake is pressed."
+  [db _]
+  (assoc db :break-pressed? true))
+
+(defn break-released-ev
+  "Every time the car brake is relased."
+  [db _]
+  (assoc db :break-pressed? false))
 
 ;;;;;;;;;;;;;;;
 ;; Component ;;
 ;;;;;;;;;;;;;;;
 
-(defrecord Core [car card-reader web-server ticks-thread re-frame-ch])
+(defrecord Core [car card-reader web-server re-frame-ch])
 
 (defn dispatch-for-answer [answers-proms-a re-frame-ch [ev-id & ev-args]]
   (let [p (promise)
@@ -105,18 +125,7 @@
   
   (start [{:keys [car card-reader web-server] :as this}]
     (let [answers-proms (atom {})
-          re-frame-ch (async/chan)
-          ticks-thread (Thread.
-                        (fn []
-                          (try
-                            (l/info "[Core] Ticks thread started")
-                            (loop []
-                              (when (Thread/interrupted) (throw (InterruptedException.)))
-                              (async/>!! re-frame-ch [:tick (System/currentTimeMillis)])
-                              (Thread/sleep 100)
-                              (recur))
-                           (catch InterruptedException ie
-                             (l/info "[Core] Ticks thread stopped")))))]
+          re-frame-ch (async/chan)]
 
       ;; Dispatch all re-frame events sequentially to avoid
       ;; clojure.lang.ExceptionInfo: re-frame: router state transition not found. :scheduled :finish-run
@@ -128,37 +137,46 @@
       ;; Register Events
       (rf/reg-event-db :initialize-db          [debug check-spec] initialize-db-ev)
       (rf/reg-event-fx :list-tags              [debug check-spec] list-tags-ev)
-      (rf/reg-event-db :card-read              [debug]            card-read-ev)
-      (rf/reg-event-fx :tick                   []                 tick-ev)
-      (rf/reg-event-fx :card-full-read         [debug check-spec] card-full-read-ev)
+      (rf/reg-event-db :card-on-reader         [debug]            card-on-reader-ev)
+      (rf/reg-event-fx :card-off-reader        [debug]            card-off-reader-ev)
       (rf/reg-event-db :set-door-unlock-method [debug check-spec] set-door-unlock-method-ev)
+      (rf/reg-event-db :button-pressed         [debug check-spec] button-pressed-ev)
+      (rf/reg-event-fx :button-released        [debug check-spec] button-released-ev)
+      (rf/reg-event-db :break-pressed          [debug check-spec] break-pressed-ev)
+      (rf/reg-event-db :break-released         [debug check-spec] break-released-ev)
       
       ;; Register FXs
       (rf/reg-fx :lock-doors (fn [_] (lock-doors car)))
       (rf/reg-fx :unlock-doors (fn [_] (unlock-doors car)))
+      (rf/reg-fx :switch-power-off (fn [_] (switch-power-off car)))
+      (rf/reg-fx :switch-power-on (fn [_] (switch-power-on car)))
       (rf/reg-fx :answer (fn [[id v]] (deliver (get @answers-proms id) v)))
-     
+
+      ;; Events from car
+      (register-break-pressed-fn car #(async/>!! re-frame-ch [:break-pressed]))
+      (register-break-released-fn car #(async/>!! re-frame-ch [:break-released]))
+      (register-button-pressed-fn car #(async/>!! re-frame-ch [:button-released %]))
+      (register-button-released-fn car #(async/>!! re-frame-ch [:button-pressed]))
+
       ;; Events from card reader
-      (register-read-fn card-reader #(async/>!! re-frame-ch [:card-read % (System/currentTimeMillis)]))
+      (register-card-on-reader-fn card-reader #(async/>!! re-frame-ch [:card-on-reader %]))
+      (register-card-off-reader-fn card-reader #(async/>!! re-frame-ch [:card-off-reader %1 %2]))
 
       ;; Events from web server
       (register-list-tags-call-back web-server #(dispatch-for-answer answers-proms [:list-tags]))
 
-      (async/>!! re-frame-ch [:initialize-db {:dooor-unlock-method :both
+      (async/>!! re-frame-ch [:initialize-db {:door-unlock-method :both
                                               :authorized-tags #{"7564F8C2"}}])
-      (.start ticks-thread)
-
+      
       (l/info "[Core] component started.")
+      
       (assoc this
-             :ticks-thread ticks-thread
              :re-frame-ch re-frame-ch)))
   
-  (stop [{:keys [ticks-thread re-frame-ch] :as this}]
+  (stop [{:keys [re-frame-ch] :as this}]
     (async/close! re-frame-ch)
-    (.interrupt ticks-thread)
     (l/info "[Core] component stopped.")
     (assoc this
-           :ticks-thread nil
            :re-frame-ch nil)))
 
 (defn make-core []

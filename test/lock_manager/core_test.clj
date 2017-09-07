@@ -24,7 +24,6 @@
 ;; Every time start with a card locked and power-off
 (defn wrap-stop-start-system [t]
   (alter-var-root #'test-system comp/start)
-  (Thread/sleep 1000)
   (lock-doors (:car test-system))
   (switch-power-off (:car test-system))
   (t)
