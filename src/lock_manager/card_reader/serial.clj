@@ -31,18 +31,16 @@
 
       (async/go-loop []
         (when-let [tid (async/<! reads-ch)]
-         (when-let [on-reader (get @call-backs :on-reader)]
-           (on-reader tid))
-
-         (let [first-read (System/currentTimeMillis)]
-           (loop []
-             (let [t (async/timeout 300)
-                   [tag-id c] (async/alts! [reads-ch t])]
-               (if (and (= c reads-ch) (= tid tag-id))
-                 (recur)
-                 (when-let [off-reader (get @call-backs :off-reader)]
-                   (off-reader tid (- (System/currentTimeMillis) first-read)))))))
-         (recur)))
+          (when-let [on-reader (get @call-backs :on-reader)]
+            (on-reader tid))
+          (loop []
+            (let [t (async/timeout 300)
+                  [tag-id c] (async/alts! [reads-ch t])]
+              (if (and (= c reads-ch) (= tid tag-id))
+                (recur)
+                (when-let [off-reader (get @call-backs :off-reader)]
+                  (off-reader tid)))))
+          (recur)))
       
       (l/info "[Serial] card reader component started.")
       (assoc this

@@ -24,15 +24,30 @@
 (s/def :db/door-unlock-method #{:both :only-key})
 (s/def :db/authorized-tags (s/coll-of :rfid.tag/id :kind set?))
 (s/def :db/reading-tag :rfid.tag/id)
-(s/def :db/break-pressed boolean?)
-(s/def :db/button-pressed boolean?)
+(s/def :db/break-pressed? boolean?)
+(s/def :db/button-pressed? boolean?)
 (s/def :db/car-power-on? boolean?)
+(s/def :db/reading-tag-timestamp pos-int?)
+(s/def :db/button-pressed-timestamp pos-int?)
 (s/def ::db (s/keys :req-un [:db/door-unlock-method
                              :db/authorized-tags]
-                    :opt-un [:db/reading-tag
+                    :opt-un [
+                             :db/reading-tag
+                             :db/reading-tag-timestamp
+                             :db/button-pressed-timestamp
                              :db/break-pressed?
                              :db/button-pressed?
                              :db/car-power-on?]))
+
+(s/def :evt/initialize-db          (s/tuple #{:initialize-db}          ::db))
+(s/def :evt/list-tags              (s/tuple #{:list-tags}))
+(s/def :evt/card-on-reader         (s/tuple #{:card-on-reader}         :rfid.tag/id))
+(s/def :evt/card-off-reader        (s/tuple #{:card-off-reader}        :rfid.tag/id pos-int?))
+(s/def :evt/set-door-unlock-method (s/tuple #{:set-door-unlock-method} :db/door-unlock-method))
+(s/def :evt/button-pressed         (s/tuple #{:button-pressed}))
+(s/def :evt/button-released        (s/tuple #{:button-released}))
+(s/def :evt/break-pressed          (s/tuple #{:break-pressed}))
+(s/def :evt/break-released         (s/tuple #{:break-released}))
 
 ;; TODO! Store db middleware
 
@@ -41,61 +56,90 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn initialize-db-ev [_ [_ initial-db]]
-  initial-db)
+  {:db initial-db})
 
 (defn list-tags-ev [{:keys [db]} [_ answer-id]]
   {:answer [answer-id (:authorized-tags db)]})
 
-(defn card-on-reader-ev [db [_ tag-id]]
-  (assoc db :reading-tag tag-id))
+(defn card-on-reader-ev [{:keys [db current-time-millis]} [_ tag-id]]
+  {:db (assoc db
+              :reading-tag tag-id
+              :reading-tag-timestamp current-time-millis)})
 
-(defn card-off-reader-ev [{:keys [db]} [_ tag-id duration]]
-  (l/debug tag-id " " duration " " db)
-  (-> (cond
-        
-        (and (= (:door-unlock-method db) :both)
-             (contains? (:authorized-tags db) tag-id)
-             (< 600 duration 5000))
-        {:unlock-doors true}
+(defn current-reading-authorized? [db]
+  (and (:reading-tag db)
+       (contains? (:authorized-tags db)
+                  (:reading-tag db))))
 
-        (and (contains? (:authorized-tags db) tag-id)
-             (< duration 1000))
-        {:lock-doors true}
+(defn card-off-reader-ev [{:keys [db current-time-millis]} [_ tag-id]]
+  (let [authorized? (current-reading-authorized? db)
+        duration (- current-time-millis (:reading-tag-timestamp db))]
+   (-> (cond
         
-        (not (contains? (:authorized-tags db) tag-id))
-        (do (l/info "Unauthorized try for " tag-id)
-            nil))
-      (assoc :db (dissoc db :reading-tag))))
+         (and (= (:door-unlock-method db) :both)
+              authorized?
+              (< 600 duration 5000))
+         {:unlock-doors true}
+
+         (and authorized?
+              (< duration 1000))
+         {:lock-doors true}
+        
+         (not authorized?)
+         (do (l/info "Unauthorized try for " tag-id)
+             nil))
+       (assoc :db (dissoc db :reading-tag)))))
 
 (defn set-door-unlock-method-ev
   "For setting a new doors unlock method."
-  [db [_ unlock-method]]
-  (assoc db :door-unlock-method unlock-method))
+  [{:keys [db]} [_ unlock-method]]
+  {:db (assoc db :door-unlock-method unlock-method)})
 
 (defn button-pressed-ev
   "Every time panel button is pressed."
-  [db _]
-  (assoc db :button-pressed? true))
+  [{:keys [db current-time-millis]} _]
+  {:db (assoc db
+              :button-pressed? true
+              :button-pressed-timestamp current-time-millis)})
 
 (defn button-released-ev
   "Every time panel button is released."
-  [{:keys [db]} [_ duration]]
-  (let [{:keys [car-power-on?]} db
+  [{:keys [db current-time-millis]} [_]]
+  (let [{:keys [car-power-on? button-pressed-timestamp]} db
+        duration (- current-time-millis button-pressed-timestamp)
         db' (assoc-in [:db :button-pressed?] false)]
-    (if (not car-power-on?)
+    (cond
+
+      (and (not car-power-on?)
+           (current-reading-authorized? db))
       {:db (assoc db' :power-on? true)
        :switch-power-on true}
+
+      (and car-power-on?
+           (:break-pressed? db))
+      {:db (assoc db' :power-on? false)
+       :switch-power-off true}
+
+      :else
       {:db db'})))
 
 (defn break-pressed-ev
   "Every time the car brake is pressed."
-  [db _]
-  (assoc db :break-pressed? true))
+  [{:keys [db]} _]
+  (when (current-reading-authorized? db)
+    (let [db' (assoc db :break-pressed? true)]
+      (if (:power-on? db')
+        {:enable-button-ignition true
+         :db db'}
+        
+        {:db db'}))))
 
 (defn break-released-ev
   "Every time the car brake is relased."
-  [db _]
-  (assoc db :break-pressed? false))
+  [{:keys [db]} _]
+  (when (current-reading-authorized? db)
+    {:db (assoc db :break-pressed? false)
+     :disable-button-ignition true}))
 
 ;;;;;;;;;;;;;;;
 ;; Component ;;
@@ -133,17 +177,21 @@
         (when-let [ev (async/<! re-frame-ch)]
           (rf/dispatch ev)
           (recur)))
+
+      (rf/reg-cofx :current-time-millis
+                   (fn [cofxs] (assoc cofxs :current-time-millis (System/currentTimeMillis))))
       
       ;; Register Events
-      (rf/reg-event-db :initialize-db          [debug check-spec] initialize-db-ev)
-      (rf/reg-event-fx :list-tags              [debug check-spec] list-tags-ev)
-      (rf/reg-event-db :card-on-reader         [debug]            card-on-reader-ev)
-      (rf/reg-event-fx :card-off-reader        [debug]            card-off-reader-ev)
-      (rf/reg-event-db :set-door-unlock-method [debug check-spec] set-door-unlock-method-ev)
-      (rf/reg-event-db :button-pressed         [debug check-spec] button-pressed-ev)
-      (rf/reg-event-fx :button-released        [debug check-spec] button-released-ev)
-      (rf/reg-event-db :break-pressed          [debug check-spec] break-pressed-ev)
-      (rf/reg-event-db :break-released         [debug check-spec] break-released-ev)
+      
+      (rf/reg-event-fx :initialize-db [debug check-spec] initialize-db-ev)
+      (rf/reg-event-fx :list-tags [debug check-spec] list-tags-ev)
+      (rf/reg-event-fx :card-on-reader [(rf/inject-cofx :current-time-millis) debug] card-on-reader-ev)
+      (rf/reg-event-fx :card-off-reader [(rf/inject-cofx :current-time-millis) debug] card-off-reader-ev)
+      (rf/reg-event-fx :set-door-unlock-method [debug check-spec] set-door-unlock-method-ev)
+      (rf/reg-event-fx :button-pressed [(rf/inject-cofx :current-time-millis) debug check-spec] button-pressed-ev)
+      (rf/reg-event-fx :button-released [(rf/inject-cofx :current-time-millis) debug check-spec] button-released-ev)
+      (rf/reg-event-fx :break-pressed [(rf/inject-cofx :current-time-millis) debug check-spec] break-pressed-ev)
+      (rf/reg-event-fx :break-released [debug check-spec] break-released-ev)
       
       ;; Register FXs
       (rf/reg-fx :lock-doors (fn [_] (lock-doors car)))
@@ -155,12 +203,12 @@
       ;; Events from car
       (register-break-pressed-fn car #(async/>!! re-frame-ch [:break-pressed]))
       (register-break-released-fn car #(async/>!! re-frame-ch [:break-released]))
-      (register-button-pressed-fn car #(async/>!! re-frame-ch [:button-released %]))
+      (register-button-pressed-fn car #(async/>!! re-frame-ch [:button-released]))
       (register-button-released-fn car #(async/>!! re-frame-ch [:button-pressed]))
 
       ;; Events from card reader
       (register-card-on-reader-fn card-reader #(async/>!! re-frame-ch [:card-on-reader %]))
-      (register-card-off-reader-fn card-reader #(async/>!! re-frame-ch [:card-off-reader %1 %2]))
+      (register-card-off-reader-fn card-reader #(async/>!! re-frame-ch [:card-off-reader %]))
 
       ;; Events from web server
       (register-list-tags-call-back web-server #(dispatch-for-answer answers-proms [:list-tags]))

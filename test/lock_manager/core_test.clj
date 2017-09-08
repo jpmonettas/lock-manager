@@ -10,16 +10,45 @@
                                                    make-mock-card-reader]]
             [com.stuartsierra.component :as comp]
             [lock-manager.main :as main]
-            [taoensso.timbre :as l]))
+            [taoensso.timbre :as l]
+            [clojure.spec.alpha :as s]
+            [clojure.test.check.generators :as gen]
+            [lock-manager.utils :as utils]))
+
+(def card-read-gen (gen/fmap (fn [[tid card-on card-off]]
+                                  [(assoc card-on 1 tid)
+                                   (assoc card-off 1 tid)])
+                             (gen/tuple (gen/elements ["7564F8C2" "00000000"])
+                                           (s/gen :evt/card-on-reader)
+                                           (s/gen :evt/card-off-reader))))
+
+(def button-press-gen (gen/tuple (s/gen :evt/button-pressed)
+                                 (s/gen :evt/button-released)))
+
+(def break-press-gen (gen/tuple (s/gen :evt/break-pressed)
+                                (s/gen :evt/break-released)))
+
+(def events-gen (gen/fmap
+                 utils/ordered-distribute
+                 (gen/tuple (gen/vector (gen/fmap vector (s/gen :evt/list-tags)))
+                            (gen/fmap #(reduce into [] %) (gen/vector card-read-gen))
+                            (gen/vector (gen/fmap vector (s/gen :evt/set-door-unlock-method)))
+                            (gen/fmap #(reduce into [] %) (gen/vector button-press-gen))
+                            (gen/fmap #(reduce into [] %) (gen/vector break-press-gen)))))
+
+#_(gen/generate events-gen)
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;
+;; Integration tests ;;
+;;;;;;;;;;;;;;;;;;;;;;;
 
 (def test-system (assoc (main/create-system {})
                         :car (make-car-mock)
                         :card-reader (make-mock-card-reader)
                         :web-server (make-web-server {:start-server? false})))
-
-;;;;;;;;;;;;;;;;;;;;;;;
-;; Integration tests ;;
-;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Every time start with a card locked and power-off
 (defn wrap-stop-start-system [t]

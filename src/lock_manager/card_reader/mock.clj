@@ -41,5 +41,5 @@
      (on-reader tag-id))
    (async/<!! (async/timeout millis))
    (when-let [off-reader (get @(:call-backs card-reader-cmp) :off-reader)]
-     (off-reader tag-id millis))
+     (off-reader tag-id))
    (async/<!! (async/timeout 1000))))

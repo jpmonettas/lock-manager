@@ -15,4 +15,22 @@
          ~(last body)))
      ctrl#))
 
+(defn remove-from-vec [v pos]
+  (-> []
+      (into (subvec v 0  pos))
+      (into (subvec v (inc pos)))))
+
+(defn ordered-distribute [v]
+  (->> (loop [rem v
+              res []]
+         (if (empty? rem)
+           res
+           (let [sel-idx (rand-int (count rem))
+                 [e & r] (nth rem sel-idx)]
+             (if r
+               (recur (assoc rem sel-idx r)
+                      (conj res e))
+               (recur (remove-from-vec rem sel-idx)
+                      (conj res e))))))))
+
 
