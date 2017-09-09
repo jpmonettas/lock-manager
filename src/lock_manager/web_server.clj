@@ -3,11 +3,13 @@
             [org.httpkit.server :as httpkit-server]
             [taoensso.timbre :as l]
             [compojure.api.sweet :refer :all]
-            [ring.util.http-response :refer :all]))
+            [ring.util.http-response :refer :all]
+            [schema.core :as sch]
+            [clojure.spec.alpha :as s]))
                                                
 
 (defprotocol WebServerP
-  (register-add-tag-call-back [_ f])
+  (register-upsert-tag-call-back [_ f])
   (register-list-tags-call-back [_ f])
   (register-rm-tag-call-back [_ f]))
 
@@ -21,9 +23,16 @@
              (clojure.stacktrace/print-stack-trace e))
     (internal-server-error ex-detail)))
 
+(sch/defschema tag
+  {:tagId sch/Str
+   :ownerName sch/Str
+   :intervals [{:fromHour sch/Int
+               :toHour sch/Int}]})
+
 (def api-routes
   (api
-   {:exceptions {:handlers {:compojure.api.exception/default unmanaged-exceptions-handler}}
+   {:coercion :schema
+    :exceptions {:handlers {:compojure.api.exception/default unmanaged-exceptions-handler}}
     :api {:invalid-routes-fn (constantly nil)}
     :swagger {:spec "/swagger.json"
               :ui "/api-docs"
@@ -32,9 +41,21 @@
                             :description "the description"}}}}
    
    (context "/api" []
-      (GET "/list-tags" req
+     (GET "/tags" req
+       :return [tag]
         (let [list-tags (-> req :call-backs deref :list-tags)]
-        (ok (list-tags)))))))
+          (ok (list-tags))))
+
+      (POST "/tags" req
+        :body [body tag]
+        :return sch/Bool
+        (let [upsert-tag (-> req :call-backs deref :upsert-tag)]
+          (ok)))
+
+      (DELETE "/tags/:id" [id :as req]
+        :return sch/Bool
+        (let [rm-tag (-> req :call-backs deref :rm-tag)]
+          (ok)))))) 
 
 (defn wrap-callbacks [call-backs next-handler]
   (fn [req]
@@ -66,8 +87,8 @@
 
   WebServerP
   
-  (register-add-tag-call-back [this f]
-    (swap! (:call-backs this) assoc :add-tag f))
+  (register-upsert-tag-call-back [this f]
+    (swap! (:call-backs this) assoc :upsert-tag f))
   
   (register-list-tags-call-back [this f]
     (swap! (:call-backs this) assoc :list-tags f))

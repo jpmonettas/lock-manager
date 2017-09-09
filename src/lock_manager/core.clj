@@ -2,7 +2,7 @@
   (:require [re-frame.core :as rf :refer [debug]]
             [lock-manager.card-reader.protocols :refer :all]
             [lock-manager.car.protocols :refer :all]
-            [lock-manager.web-server :refer [register-add-tag-call-back
+            [lock-manager.web-server :refer [register-upsert-tag-call-back
                                              register-list-tags-call-back
                                              register-rm-tag-call-back]]
             [com.stuartsierra.component :as comp]
