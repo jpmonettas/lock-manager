@@ -24,10 +24,10 @@
     (internal-server-error ex-detail)))
 
 (sch/defschema tag
-  {:tagId sch/Str
-   :ownerName sch/Str
-   :intervals [{:fromHour sch/Int
-               :toHour sch/Int}]})
+  {:tag-id sch/Str
+   :owner-name sch/Str
+   :intervals [{:from-hour sch/Int
+               :to-hour sch/Int}]})
 
 (def api-routes
   (api
@@ -43,19 +43,19 @@
    (context "/api" []
      (GET "/tags" req
        :return [tag]
-        (let [list-tags (-> req :call-backs deref :list-tags)]
-          (ok (list-tags))))
+       (let [list-tags (-> req :call-backs deref :list-tags)]
+         (ok (list-tags))))
 
-      (POST "/tags" req
-        :body [body tag]
-        :return sch/Bool
-        (let [upsert-tag (-> req :call-backs deref :upsert-tag)]
-          (ok)))
+     (POST "/tags" req
+       :body [body tag]
+       :return sch/Bool
+       (let [upsert-tag (-> req :call-backs deref :upsert-tag)]
+         (ok (upsert-tag body))))
 
-      (DELETE "/tags/:id" [id :as req]
-        :return sch/Bool
-        (let [rm-tag (-> req :call-backs deref :rm-tag)]
-          (ok)))))) 
+     (DELETE "/tags/:id" [id :as req]
+       :return sch/Bool
+       (let [rm-tag (-> req :call-backs deref :rm-tag)]
+         (ok (rm-tag id))))))) 
 
 (defn wrap-callbacks [call-backs next-handler]
   (fn [req]
@@ -95,6 +95,9 @@
   
   (register-rm-tag-call-back [this f]
     (swap! (:call-backs this) assoc :rm-tag f)))
+
+(defn handler [web-server-cmp]
+  (:handler web-server-cmp))
 
 (defn make-web-server [opts]
   (map->WebServer {:opts opts}))

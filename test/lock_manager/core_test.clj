@@ -4,7 +4,8 @@
             [lock-manager.car.mock :as car-mock :refer [locked?
                                                         make-car-mock]]
             [lock-manager.car.protocols :refer :all]
-            [lock-manager.web-server :refer [make-web-server]]
+            [lock-manager.web-server :refer [make-web-server
+                                             handler]]
             [lock-manager.card-reader.protocols :refer :all]
             [lock-manager.card-reader.mock :refer [simulate-read
                                                    make-mock-card-reader]]
@@ -13,7 +14,8 @@
             [taoensso.timbre :as l]
             [clojure.spec.alpha :as s]
             [clojure.test.check.generators :as gen]
-            [lock-manager.utils :as utils]))
+            [lock-manager.utils :as utils]
+            [ring.mock.request :as mock]))
 
 (def card-read-gen (gen/fmap (fn [[tid card-on card-off]]
                                   [(assoc card-on 1 tid)

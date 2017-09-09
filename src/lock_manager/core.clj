@@ -21,8 +21,9 @@
 ;; Db Spec ;;
 ;;;;;;;;;;;;;
 
+(s/def :db/tag any?)
 (s/def :db/door-unlock-method #{:both :only-key})
-(s/def :db/authorized-tags (s/coll-of :rfid.tag/id :kind set?))
+(s/def :db/authorized-tags (s/map-of :rfid.tag/id :db/tag))
 (s/def :db/reading-tag :rfid.tag/id)
 (s/def :db/break-pressed? boolean?)
 (s/def :db/button-pressed? boolean?)
@@ -59,7 +60,15 @@
   {:db initial-db})
 
 (defn list-tags-ev [{:keys [db]} [_ answer-id]]
-  {:answer [answer-id (:authorized-tags db)]})
+  {:answer [answer-id (vals (:authorized-tags db))]})
+
+(defn upsert-tag-ev [{:keys [db]} [_ answer-id tag]]
+  {:answer [answer-id true]
+   :db (assoc-in db [:authorized-tags (:tag-id tag)] tag)})
+
+(defn rm-tag-ev [{:keys [db]} [_ answer-id tag-id]]
+  {:answer [answer-id true]
+   :db (update db :authorized-tags dissoc tag-id)})
 
 (defn card-on-reader-ev [{:keys [db current-time-millis]} [_ tag-id]]
   {:db (assoc db
@@ -185,6 +194,8 @@
       
       (rf/reg-event-fx :initialize-db [debug check-spec] initialize-db-ev)
       (rf/reg-event-fx :list-tags [debug check-spec] list-tags-ev)
+      (rf/reg-event-fx :upsert-tag [debug check-spec] upsert-tag-ev)
+      (rf/reg-event-fx :rm-tag [debug check-spec] rm-tag-ev)
       (rf/reg-event-fx :card-on-reader [(rf/inject-cofx :current-time-millis) debug] card-on-reader-ev)
       (rf/reg-event-fx :card-off-reader [(rf/inject-cofx :current-time-millis) debug] card-off-reader-ev)
       (rf/reg-event-fx :set-door-unlock-method [debug check-spec] set-door-unlock-method-ev)
@@ -198,7 +209,8 @@
       (rf/reg-fx :unlock-doors (fn [_] (unlock-doors car)))
       (rf/reg-fx :switch-power-off (fn [_] (switch-power-off car)))
       (rf/reg-fx :switch-power-on (fn [_] (switch-power-on car)))
-      (rf/reg-fx :answer (fn [[id v]] (deliver (get @answers-proms id) v)))
+      (rf/reg-fx :answer (fn [[id v]]
+                           (deliver (get @answers-proms id) v)))
 
       ;; Events from car
       (register-break-pressed-fn car #(async/>!! re-frame-ch [:break-pressed]))
@@ -212,9 +224,11 @@
 
       ;; Events from web server
       (register-list-tags-call-back web-server #(dispatch-for-answer answers-proms re-frame-ch [:list-tags]))
-
+      (register-upsert-tag-call-back web-server #(dispatch-for-answer answers-proms re-frame-ch [:upsert-tag %]))
+      (register-rm-tag-call-back web-server #(dispatch-for-answer answers-proms re-frame-ch [:rm-tag %]))
+      
       (async/>!! re-frame-ch [:initialize-db {:door-unlock-method :both
-                                              :authorized-tags #{"7564F8C2"}}])
+                                              :authorized-tags {}}])
       
       (l/info "[Core] component started.")
       
