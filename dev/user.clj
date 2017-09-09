@@ -9,7 +9,7 @@
                               
 
 (defn start-system! []
-  (main/start-system {:car "mock" :card-reader "serial"})
+  (main/start-system {:car "mock" :card-reader "mock"})
   #_(cst/instrument))
 
 (defn stop-system! []

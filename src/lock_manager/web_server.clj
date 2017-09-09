@@ -1,7 +1,10 @@
 (ns lock-manager.web-server
   (:require [com.stuartsierra.component :as comp]
             [org.httpkit.server :as httpkit-server]
-            [taoensso.timbre :as l]))
+            [taoensso.timbre :as l]
+            [compojure.api.sweet :refer :all]
+            [ring.util.http-response :refer :all]))
+                                               
 
 (defprotocol WebServerP
   (register-add-tag-call-back [_ f])
@@ -10,11 +13,32 @@
 
 (defrecord WebServer [server handler call-backs opts])
 
-(defn build-handler [call-backs-a]
+(defn unmanaged-exceptions-handler [e]
+  (let [ex-detail {:message (.getMessage e)
+                   :stack-trace (map str (.getStackTrace e))}]
+    (l/error "Unmanaged exception"
+             (.getMessage e)
+             (clojure.stacktrace/print-stack-trace e))
+    (internal-server-error ex-detail)))
+
+(def api-routes
+  (api
+   {:exceptions {:handlers {:compojure.api.exception/default unmanaged-exceptions-handler}}
+    :api {:invalid-routes-fn (constantly nil)}
+    :swagger {:spec "/swagger.json"
+              :ui "/api-docs"
+              :data {:info {:version "1.0.0"
+                            :title "My API"
+                            :description "the description"}}}}
+   
+   (context "/api" []
+      (GET "/list-tags" req
+        (let [list-tags (-> req :call-backs deref :list-tags)]
+        (ok (list-tags)))))))
+
+(defn wrap-callbacks [call-backs next-handler]
   (fn [req]
-    (when-let [list-tags (:list-tags @call-backs-a)]
-     {:status 200
-      :body (str (list-tags))})))
+    (next-handler (assoc req :call-backs call-backs))))
 
 (extend-type WebServer
 
@@ -22,7 +46,7 @@
 
   (start [this]
     (let [call-backs (atom {})
-          handler (-> (build-handler call-backs))
+          handler (wrap-callbacks call-backs #'api-routes)
           http-server (when (-> this :opts :start-server?)
                         (httpkit-server/run-server handler
                                                    {:port 1234}))]

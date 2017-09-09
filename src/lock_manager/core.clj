@@ -211,7 +211,7 @@
       (register-card-off-reader-fn card-reader #(async/>!! re-frame-ch [:card-off-reader %]))
 
       ;; Events from web server
-      (register-list-tags-call-back web-server #(dispatch-for-answer answers-proms [:list-tags]))
+      (register-list-tags-call-back web-server #(dispatch-for-answer answers-proms re-frame-ch [:list-tags]))
 
       (async/>!! re-frame-ch [:initialize-db {:door-unlock-method :both
                                               :authorized-tags #{"7564F8C2"}}])

@@ -14,7 +14,8 @@
                  [org.clojure/test.check "0.10.0-alpha2"]
                  [org.clojure/tools.namespace "0.3.0-alpha4"]
                  [clj-serial "2.0.4-SNAPSHOT"]
-                 [org.clojure/core.async "0.3.443"]]
+                 [org.clojure/core.async "0.3.443"]
+                 [metosin/compojure-api "2.0.0-alpha7"]]
   :main ^:skip-aot lock-manager.main
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}
