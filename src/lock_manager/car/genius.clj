@@ -11,7 +11,11 @@
 (def unlock-door-relay-pin 3)
 (def running-led-pin 0)
 
-(defrecord Genius [running-proc-ctrl])
+(def brake-pin nil)
+(def button-pin nil)
+(def power-pin nil)
+
+(defrecord Genius [running-proc-ctrl brake-proc-ctrl button-proc-ctrl])
 
 (defn start-running-proc []
   (Gpio/pinMode running-led-pin Gpio/OUTPUT)
@@ -23,6 +27,24 @@
      (recur))
   (l/info "[Genius] Running thread started"))
 
+(defn start-input-proc [pin call-backs-a on-key off-key]
+  (Gpio/pinMode pin Gpio/INPUT)
+  (utils/interruptible-go-loop [state (Gpio/digitalRead pin)]
+     (async/<! (async/timeout 100))
+     (let [new-state (Gpio/digitalRead pin)]
+       (if (not= state new-state)
+         (do (if (= new-state 1)
+               (when-let [on-fn (get @call-backs-a on-key)]
+                 (on-fn)
+                 (l/debug "Fired " on-key))
+               (when-let [off-fn (get @call-backs-a off-key)]
+                 (off-fn)
+                 (l/debug "Fired " off-key)))
+             (recur new-state))
+         (recur state))))
+  (l/info "[Genius] input thread started"))
+
+
 (extend-type Genius
 
   comp/Lifecycle
@@ -32,43 +54,56 @@
     (Gpio/wiringPiSetup)
     (Gpio/pinMode lock-door-relay-pin Gpio/OUTPUT)
     (Gpio/pinMode unlock-door-relay-pin Gpio/OUTPUT)
+    (Gpio/pinMode power-pin Gpio/OUTPUT)
     
-    (let [running-proc-ctrl (start-running-proc)]
-      
+    (Gpio/pinMode button-pin Gpio/INPUT)
+    
+    (let [call-backs (atom {})
+          running-proc-ctrl (start-running-proc)
+          brake-proc-ctrl (start-input-proc brake-pin call-backs :brake-pressed :brake-released)
+          button-proc-ctrl (start-input-proc button-pin call-backs :button-pressed :button-released)]
       (l/info "[Genius] component started")
-
-      (assoc this :running-proc-ctrl running-proc-ctrl)))
+      (assoc this
+             :running-proc-ctrl running-proc-ctrl
+             :brake-proc-ctrl brake-proc-ctrl
+             :button-proc-ctrl button-proc-ctrl
+             :call-backs call-backs)))
   
-  (stop [{:keys [running-proc-ctrl] :as this}]
+  (stop [{:keys [running-proc-ctrl brake-proc-ctrl button-proc-ctrl] :as this}]
     (async/>!! running-proc-ctrl :stop)
+    (async/>!! brake-proc-ctrl :stop)
+    (async/>!! button-proc-ctrl :stop)
     (l/info "[Genius] component stopped")
-    (assoc this :running-proc-ctrl nil))
+    (assoc this
+           :running-proc-ctrl nil
+           :brake-proc-ctrl nil
+           :button-proc-ctrl nil
+           :call-backs nil))
   
 
   CarP
 
   (lock-doors [this]
     (Gpio/digitalWrite lock-door-relay-pin Gpio/HIGH)
-    (async/<!! (async/timeout 1000))
-    (Gpio/digitalWrite lock-door-relay-pin Gpio/LOW)
-    (l/debug "Lock Wrote on pin " lock-door-relay-pin
-             " for .5 sec"))
+    (async/<!! (async/timeout 600))
+    (Gpio/digitalWrite lock-door-relay-pin Gpio/LOW))
   
   (unlock-doors [this]
     (Gpio/digitalWrite unlock-door-relay-pin Gpio/HIGH)
-    (async/<!! (async/timeout 1000))
-    (Gpio/digitalWrite unlock-door-relay-pin Gpio/LOW)
-    (l/debug "Unlock Wrote on pin " unlock-door-relay-pin
-             " for .5 sec"))
+    (async/<!! (async/timeout 600))
+    (Gpio/digitalWrite unlock-door-relay-pin Gpio/LOW))
+
+  (switch-power-on [_]
+    (Gpio/digitalWrite power-pin Gpio/HIGH))
   
-  (register-break-pressed-fn [this f])
-  (register-break-released-fn [this f])
+  (switch-power-off [_]
+    (Gpio/digitalWrite power-pin Gpio/LOW))
+    
+  (register-break-pressed-fn [this f] (swap! (:call-backs this) assoc :brake-pressed f))
+  (register-break-released-fn [this f] (swap! (:call-backs this) assoc :brake-released f))
   
-  (switch-power-on [this])
-  (switch-power-off [this])
-  
-  (register-button-released-fn [this f])
-  (register-button-pressed-fn [this f]))
+  (register-button-released-fn [this f] (swap! (:call-backs this) assoc :button-pressed f))
+  (register-button-pressed-fn [this f] (swap! (:call-backs this) assoc :button-released f)))
 
 (defn make-car-genius []
   (map->Genius {}))
