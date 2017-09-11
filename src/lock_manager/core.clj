@@ -9,7 +9,8 @@
             [clojure.spec.alpha :as s]
             [taoensso.timbre :as l]
             [clojure.string :as str]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [clojure.edn :as edn]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IMPORTANT! : Never call re-frame/dispatch directly, put the events in       ;;
@@ -61,25 +62,30 @@
 (s/def :evt/break-pressed          (s/tuple #{:break-pressed}))
 (s/def :evt/break-released         (s/tuple #{:break-released}))
 
-;; TODO! Store db middleware
+
+(def db-file "./lock-manager-db.edn")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Re-frame events. All logic goes here ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn initialize-db-ev [_ [_ initial-db]]
-  {:db initial-db})
+(defn initialize-db-ev [{:keys [read-up-edn]} [_ initial-db]]
+  {:db (or read-up-edn initial-db)})
 
 (defn list-tags-ev [{:keys [db]} [_ answer-id]]
   {:answer [answer-id (vals (:authorized-tags db))]})
 
 (defn upsert-tag-ev [{:keys [db]} [_ answer-id tag]]
-  {:answer [answer-id true]
-   :db (assoc-in db [:authorized-tags (:id tag)] tag)})
+  (let [db' (assoc-in db [:authorized-tags (:id tag)] tag)]
+   {:answer [answer-id true]
+    :db db'
+    :write-down [db-file db']}))
 
 (defn rm-tag-ev [{:keys [db]} [_ answer-id tag-id]]
-  {:answer [answer-id true]
-   :db (update db :authorized-tags dissoc tag-id)})
+  (let [db' (update db :authorized-tags dissoc tag-id)]
+   {:answer [answer-id true]
+    :db db'
+    :write-down [db-file db']}))
 
 (defn card-on-reader-ev [{:keys [db current-time-millis]} [_ tag-id]]
   {:db (assoc db
@@ -200,10 +206,18 @@
 
       (rf/reg-cofx :current-time-millis
                    (fn [cofxs] (assoc cofxs :current-time-millis (System/currentTimeMillis))))
+
+      (rf/reg-cofx :read-up-edn
+                   (fn [cofxs file-path]
+                     (let [data (try
+                                  (edn/read-string (slurp file-path)) 
+                                  (catch Exception fnfe
+                                    nil))]
+                       (assoc cofxs :read-up-edn data))))
       
       ;; Register Events
       
-      (rf/reg-event-fx :initialize-db [ check-spec] initialize-db-ev)
+      (rf/reg-event-fx :initialize-db [(rf/inject-cofx :read-up-edn db-file) check-spec] initialize-db-ev)
       (rf/reg-event-fx :list-tags [ check-spec] list-tags-ev)
       (rf/reg-event-fx :upsert-tag [ check-spec] upsert-tag-ev)
       (rf/reg-event-fx :rm-tag [ check-spec] rm-tag-ev)
@@ -222,6 +236,8 @@
       (rf/reg-fx :switch-power-on (fn [_] (switch-power-on car)))
       (rf/reg-fx :answer (fn [[id v]]
                            (deliver (get @answers-proms id) v)))
+      (rf/reg-fx :write-down (fn [[file-path data]]
+                               (spit file-path data :append false)))
 
       ;; Events from car
       (register-break-pressed-fn car #(async/>!! re-frame-ch [:break-pressed]))
