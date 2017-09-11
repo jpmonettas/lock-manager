@@ -10,12 +10,14 @@
             [lock-manager.card-reader.mock :refer [simulate-read
                                                    make-mock-card-reader]]
             [com.stuartsierra.component :as comp]
-            [lock-manager.main :as main]
             [taoensso.timbre :as l]
             [clojure.spec.alpha :as s]
+            [clojure.test.check.clojure-test :refer [defspec]]
             [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as props]
             [lock-manager.utils :as utils]
-            [ring.mock.request :as mock]))
+            [ring.mock.request :as mock]
+            [re-frame.core :as rf]))
 
 (def card-read-gen (gen/fmap (fn [[tid card-on card-off]]
                                   [(assoc card-on 1 tid)
@@ -30,27 +32,56 @@
 (def break-press-gen (gen/tuple (s/gen :evt/break-pressed)
                                 (s/gen :evt/break-released)))
 
-(def events-gen (gen/fmap
-                 utils/ordered-distribute
-                 (gen/tuple (gen/vector (gen/fmap vector (s/gen :evt/list-tags)))
-                            (gen/fmap #(reduce into [] %) (gen/vector card-read-gen))
-                            (gen/vector (gen/fmap vector (s/gen :evt/set-door-unlock-method)))
-                            (gen/fmap #(reduce into [] %) (gen/vector button-press-gen))
-                            (gen/fmap #(reduce into [] %) (gen/vector break-press-gen)))))
+(defn build-events-gen [& types]
+  (let [types-set (into #{} types)
+        tuple-gens (cond-> []
+                     (types-set :web-interaction) (conj (gen/vector (s/gen :evt/list-tags))
+                                                        (gen/vector (s/gen :evt/rm-tag))
+                                                        (gen/vector (s/gen :evt/add-tag)))
+                     (types-set :brakes)          (conj (gen/fmap #(reduce into [] %) (gen/vector break-press-gen)))
+                     (types-set :button)          (conj (gen/fmap #(reduce into [] %) (gen/vector button-press-gen)))
+                     (types-set :card-reads)      (conj (gen/fmap #(reduce into [] %) (gen/vector card-read-gen)))
+                     (types-set :config)          (conj (gen/vector (s/gen :evt/set-door-unlock-method))))]
+   (gen/fmap
+    utils/ordered-distribute
+    (apply gen/tuple tuple-gens))))
 
-#_(gen/generate events-gen)
+(comment
+  (gen/generate (build-events-gen :card-reads))
+  )
 
+(rf/reg-sub :db (fn [db _] db))
 
+(defspec it-should-never-turn-on-without-brake
+  100
+  (let [db (rf/subscribe [:db])
+        fxs (atom {})]
+    (rf/reg-fx :lock-doors (fn [_]  (swap! fxs update :lock-doors (fnil inc 0))))
+    (rf/reg-fx :unlock-doors (fn [_]  (swap! fxs update :unlock-doors (fnil inc 0))))
+    (rf/reg-fx :switch-power-off (fn [_]  (swap! fxs update :switch-power-off (fnil inc 0))))
+    (rf/reg-fx :switch-power-on (fn [_]  (swap! fxs update :switch-power-on (fnil inc 0))))
+    (rf/reg-fx :answer (fn [[id v]]  (swap! fxs update :answer (fnil inc 0))))
 
+    (props/for-all [events-without-break (build-events-gen :button
+                                                           :card-reads
+                                                           :config)
+                    db (s/gen :lock-manager.core/db)]
+
+                   (rf/dispatch-sync [:initialize-db db])
+                   (doseq [e events-without-break]
+                     (rf/dispatch-sync e))
+                   (nil? (:switch-power-on @fxs)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;
 ;; Integration tests ;;
 ;;;;;;;;;;;;;;;;;;;;;;;
 
-(def test-system (assoc (main/create-system {})
-                        :car (make-car-mock)
-                        :card-reader (make-mock-card-reader)
-                        :web-server (make-web-server {:start-server? false})))
+(def test-system (comp/system-map
+                  :core (comp/using (make-core)
+                                    [:car :card-reader :web-server])
+                  :car (make-car-mock)
+                  :card-reader (make-mock-card-reader)
+                  :web-server (make-web-server {:start-server? false})))
 
 ;; Every time start with a card locked and power-off
 (defn wrap-stop-start-system [t]

@@ -5,7 +5,9 @@
             [compojure.api.sweet :refer :all]
             [ring.util.http-response :refer :all]
             [schema.core :as sch]
-            [clojure.spec.alpha :as s]))
+            [clojure.spec.alpha :as s]
+            [clojure.test.check.generators :as gen]
+            [re-frame.core :as rf]))
                                                
 
 (defprotocol WebServerP
@@ -24,7 +26,7 @@
     (internal-server-error ex-detail)))
 
 (sch/defschema tag
-  {:tag-id sch/Str
+  {:id sch/Str
    :owner-name sch/Str
    :intervals [{:from-hour sch/Int
                :to-hour sch/Int}]})
@@ -55,7 +57,13 @@
      (DELETE "/tags/:id" [id :as req]
        :return sch/Bool
        (let [rm-tag (-> req :call-backs deref :rm-tag)]
-         (ok (rm-tag id))))))) 
+         (ok (rm-tag id))))
+
+     ;; Just for testing the UI
+     (POST "/random-db" []
+       (let [gen-db (gen/generate (s/gen :lock-manager.core/db))]
+         (re-frame.core/dispatch [:initialize-db gen-db])
+         (ok gen-db)))))) 
 
 (defn wrap-callbacks [call-backs next-handler]
   (fn [req]

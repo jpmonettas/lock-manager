@@ -21,7 +21,7 @@
       (into (subvec v (inc pos)))))
 
 (defn ordered-distribute [v]
-  (->> (loop [rem v
+  (->> (loop [rem (into [] (remove empty? v))
               res []]
          (if (empty? rem)
            res

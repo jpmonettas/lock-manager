@@ -6,7 +6,11 @@
 $ lein repl 
 ```
 ```clojure
-(user/restart!)
+;; for starting 
+user> (go)
+
+;; reload any code change and restart everything
+dev> (reset)
 ```
 
 ## Production

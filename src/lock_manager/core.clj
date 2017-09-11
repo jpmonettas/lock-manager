@@ -21,7 +21,16 @@
 ;; Db Spec ;;
 ;;;;;;;;;;;;;
 
-(s/def :db/tag any?)
+(s/def :db.tag.interval/from-hour (s/int-in 0 24))
+(s/def :db.tag.interval/to-hour (s/int-in 0 24))
+(s/def :db.tag/owner-name (s/and string? not-empty))
+(s/def :db.tag/intervals (s/coll-of (s/keys :req-un [:db.tag.interval/from-hour
+                                                     :db.tag.interval/to-hour])
+                                    :kind vector?
+                                    :gen-max 3))
+(s/def :db/tag (s/keys :req-un [:rfid.tag/id
+                                :db.tag/owner-name
+                                :db.tag/intervals]))
 (s/def :db/door-unlock-method #{:both :only-key})
 (s/def :db/authorized-tags (s/map-of :rfid.tag/id :db/tag))
 (s/def :db/reading-tag :rfid.tag/id)
@@ -42,8 +51,10 @@
 
 (s/def :evt/initialize-db          (s/tuple #{:initialize-db}          ::db))
 (s/def :evt/list-tags              (s/tuple #{:list-tags}))
+(s/def :evt/rm-tag                 (s/tuple #{:rm-tag}                 :rfid.tag/id))
+(s/def :evt/add-tag                (s/tuple #{:add-tag}                :db/tag))
 (s/def :evt/card-on-reader         (s/tuple #{:card-on-reader}         :rfid.tag/id))
-(s/def :evt/card-off-reader        (s/tuple #{:card-off-reader}        :rfid.tag/id pos-int?))
+(s/def :evt/card-off-reader        (s/tuple #{:card-off-reader}        :rfid.tag/id))
 (s/def :evt/set-door-unlock-method (s/tuple #{:set-door-unlock-method} :db/door-unlock-method))
 (s/def :evt/button-pressed         (s/tuple #{:button-pressed}))
 (s/def :evt/button-released        (s/tuple #{:button-released}))
@@ -64,7 +75,7 @@
 
 (defn upsert-tag-ev [{:keys [db]} [_ answer-id tag]]
   {:answer [answer-id true]
-   :db (assoc-in db [:authorized-tags (:tag-id tag)] tag)})
+   :db (assoc-in db [:authorized-tags (:id tag)] tag)})
 
 (defn rm-tag-ev [{:keys [db]} [_ answer-id tag-id]]
   {:answer [answer-id true]
@@ -116,7 +127,7 @@
   [{:keys [db current-time-millis]} [_]]
   (let [{:keys [car-power-on? button-pressed-timestamp]} db
         duration (- current-time-millis button-pressed-timestamp)
-        db' (assoc-in [:db :button-pressed?] false)]
+        db' (assoc db :button-pressed? false)]
     (cond
 
       (and (not car-power-on?)
@@ -192,17 +203,17 @@
       
       ;; Register Events
       
-      (rf/reg-event-fx :initialize-db [debug check-spec] initialize-db-ev)
-      (rf/reg-event-fx :list-tags [debug check-spec] list-tags-ev)
-      (rf/reg-event-fx :upsert-tag [debug check-spec] upsert-tag-ev)
-      (rf/reg-event-fx :rm-tag [debug check-spec] rm-tag-ev)
-      (rf/reg-event-fx :card-on-reader [(rf/inject-cofx :current-time-millis) debug] card-on-reader-ev)
-      (rf/reg-event-fx :card-off-reader [(rf/inject-cofx :current-time-millis) debug] card-off-reader-ev)
-      (rf/reg-event-fx :set-door-unlock-method [debug check-spec] set-door-unlock-method-ev)
-      (rf/reg-event-fx :button-pressed [(rf/inject-cofx :current-time-millis) debug check-spec] button-pressed-ev)
-      (rf/reg-event-fx :button-released [(rf/inject-cofx :current-time-millis) debug check-spec] button-released-ev)
-      (rf/reg-event-fx :break-pressed [(rf/inject-cofx :current-time-millis) debug check-spec] break-pressed-ev)
-      (rf/reg-event-fx :break-released [debug check-spec] break-released-ev)
+      (rf/reg-event-fx :initialize-db [ check-spec] initialize-db-ev)
+      (rf/reg-event-fx :list-tags [ check-spec] list-tags-ev)
+      (rf/reg-event-fx :upsert-tag [ check-spec] upsert-tag-ev)
+      (rf/reg-event-fx :rm-tag [ check-spec] rm-tag-ev)
+      (rf/reg-event-fx :card-on-reader [(rf/inject-cofx :current-time-millis) ] card-on-reader-ev)
+      (rf/reg-event-fx :card-off-reader [(rf/inject-cofx :current-time-millis) ] card-off-reader-ev)
+      (rf/reg-event-fx :set-door-unlock-method [ check-spec] set-door-unlock-method-ev)
+      (rf/reg-event-fx :button-pressed [(rf/inject-cofx :current-time-millis)  check-spec] button-pressed-ev)
+      (rf/reg-event-fx :button-released [(rf/inject-cofx :current-time-millis)  check-spec] button-released-ev)
+      (rf/reg-event-fx :break-pressed [(rf/inject-cofx :current-time-millis)  check-spec] break-pressed-ev)
+      (rf/reg-event-fx :break-released [ check-spec] break-released-ev)
       
       ;; Register FXs
       (rf/reg-fx :lock-doors (fn [_] (lock-doors car)))

@@ -11,14 +11,16 @@
                  [com.stuartsierra/component "0.3.2"]
                  [com.taoensso/timbre "4.10.0"]
                  [re-frame "0.10.1"]
-                 [org.clojure/test.check "0.10.0-alpha2"]
+                 [org.clojure/test.check "0.9.0"]
                  [org.clojure/tools.namespace "0.3.0-alpha4"]
                  [clj-serial "2.0.4-SNAPSHOT"]
                  [org.clojure/core.async "0.3.443"]
                  [metosin/compojure-api "2.0.0-alpha7"]
                  [ring/ring-mock "0.3.1"]]
+  :repl-options {:init-ns user}
   :main ^:skip-aot lock-manager.main
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}
              :dev {:source-paths ["dev"]
-                   :dependencies [[inspectable "0.2.2"]]}})
+                   :dependencies [[inspectable "0.2.2"]
+                                  [com.stuartsierra/component.repl "0.2.0"]]}})
