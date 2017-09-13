@@ -7,7 +7,10 @@
 (defn byte-array->hex-str [byte-arr]
   (apply str (map #(format "%X" %) byte-arr)))
 
-(defmacro interruptible-go-loop [bindings & body]
+(defmacro interruptible-go-loop
+  ""
+  {:style/indent 1}
+  [bindings & body]
   `(let [ctrl# (async/chan)]
      (async/go-loop ~bindings
        ~@(butlast body)

@@ -16,7 +16,8 @@
                  [clj-serial "2.0.4-SNAPSHOT"]
                  [org.clojure/core.async "0.3.443"]
                  [metosin/compojure-api "2.0.0-alpha7"]
-                 [ring/ring-mock "0.3.1"]]
+                 [ring/ring-mock "0.3.1"]
+                 [seesaw "1.4.5"]]
   :repl-options {:init-ns user}
   :main ^:skip-aot lock-manager.main
   :target-path "target/%s"

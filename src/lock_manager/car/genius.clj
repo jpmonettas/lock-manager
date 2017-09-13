@@ -4,37 +4,36 @@
             [lock-manager.utils :as utils]
             [taoensso.timbre :as l]
             [lock-manager.car.protocols :refer :all]
-            [clojure.core.async :as async])
-  (:import com.pi4j.wiringpi.Gpio))
+            [lock-manager.gpio.protocols :refer :all]
+            [clojure.core.async :as async]))
 
 ;; Output pins
-(def lock-door-relay-pin 2)
-(def unlock-door-relay-pin 3)
-(def running-led-pin 0)
-(def power-pin 1)
+(def running-led-pin 11)
+(def lock-door-relay-pin 13)
+(def unlock-door-relay-pin 15)
+
+(def power-pin 12)
 
 ;; Input pins
-(def brake-pin 4)
-(def button-pin 5)
+(def brake-pin 16)
+(def button-pin 18)
 
 
-(defrecord Genius [running-proc-ctrl brake-proc-ctrl button-proc-ctrl])
+(defrecord Genius [running-proc-ctrl brake-proc-ctrl button-proc-ctrl gpio])
 
-(defn start-running-proc []
-  (Gpio/pinMode running-led-pin Gpio/OUTPUT)
+(defn start-running-proc [gpio]
   (utils/interruptible-go-loop []
-     (Gpio/digitalWrite running-led-pin Gpio/HIGH)
-     (async/<! (async/timeout 1000))
-     (Gpio/digitalWrite running-led-pin Gpio/LOW)
-     (async/<! (async/timeout 1000))
-     (recur))
+    (set-pin gpio running-led-pin :high)
+    (async/<! (async/timeout 1000))
+    (set-pin gpio running-led-pin :low)
+    (async/<! (async/timeout 1000))
+    (recur))
   (l/info "[Genius] Running thread started"))
 
-(defn start-input-proc [pin call-backs-a on-key off-key]
-  (Gpio/pinMode pin Gpio/INPUT)
-  (utils/interruptible-go-loop [state (Gpio/digitalRead pin)]
+(defn start-input-proc [pin call-backs-a on-key off-key gpio]
+  (utils/interruptible-go-loop [state (read-pin gpio pin)]
      (async/<! (async/timeout 100))
-     (let [new-state (Gpio/digitalRead pin)]
+     (let [new-state (read-pin gpio pin)]
        (if (not= state new-state)
          (do (if (= new-state 1)
                (when-let [on-fn (get @call-backs-a on-key)]
@@ -54,19 +53,17 @@
 
   (start [this]
     
-    (Gpio/wiringPiSetup)
-    (Gpio/pinMode lock-door-relay-pin Gpio/OUTPUT)
-    (Gpio/digitalWrite lock-door-relay-pin Gpio/HIGH)
-    (Gpio/pinMode unlock-door-relay-pin Gpio/OUTPUT)
-    (Gpio/digitalWrite unlock-door-relay-pin Gpio/HIGH)
-
-    (Gpio/pinMode power-pin Gpio/OUTPUT)
-    (Gpio/pinMode button-pin Gpio/INPUT)
-    
     (let [call-backs (atom {})
-          running-proc-ctrl (start-running-proc)
-          brake-proc-ctrl (start-input-proc brake-pin call-backs :brake-pressed :brake-released)
-          button-proc-ctrl (start-input-proc button-pin call-backs :button-pressed :button-released)]
+          gpio (:gpio this)
+          _    (config-pins gpio [[lock-door-relay-pin :out :high "lock-door"]
+                                  [unlock-door-relay-pin :out :high "unlock-door"]
+                                  [power-pin :out :high "power"]
+                                  [brake-pin :in nil "break"]
+                                  [button-pin :in nil "button"]
+                                  [running-led-pin :out nil "running"]])
+          running-proc-ctrl (start-running-proc gpio)
+          brake-proc-ctrl (start-input-proc brake-pin call-backs :brake-pressed :brake-released gpio)
+          button-proc-ctrl (start-input-proc button-pin call-backs :button-pressed :button-released gpio)]
       (l/info "[Genius] component started")
       (assoc this
              :running-proc-ctrl running-proc-ctrl
@@ -88,21 +85,22 @@
 
   CarP
 
-  (lock-doors [this]
-    (Gpio/digitalWrite lock-door-relay-pin Gpio/LOW)
-    (async/<!! (async/timeout 600))
-    (Gpio/digitalWrite lock-door-relay-pin Gpio/HIGH))
-  
-  (unlock-doors [this]
-    (Gpio/digitalWrite unlock-door-relay-pin Gpio/LOW)
-    (async/<!! (async/timeout 600))
-    (Gpio/digitalWrite unlock-door-relay-pin Gpio/HIGH))
+  (lock-doors [{:keys [gpio]}]
 
-  (switch-power-on [_]
-    (Gpio/digitalWrite power-pin Gpio/HIGH))
+    (set-pin gpio lock-door-relay-pin :low)
+    (async/<!! (async/timeout 600))
+    (set-pin gpio lock-door-relay-pin :high))
   
-  (switch-power-off [_]
-    (Gpio/digitalWrite power-pin Gpio/LOW))
+  (unlock-doors [{:keys [gpio]}]
+    (set-pin gpio unlock-door-relay-pin :low)
+    (async/<!! (async/timeout 600))
+    (set-pin gpio unlock-door-relay-pin :high))
+
+  (switch-power-on [{:keys [gpio]}]
+    (set-pin gpio power-pin :high))
+  
+  (switch-power-off [{:keys [gpio]}]
+    (set-pin gpio power-pin :low))
     
   (register-break-pressed-fn [this f] (swap! (:call-backs this) assoc :brake-pressed f))
   (register-break-released-fn [this f] (swap! (:call-backs this) assoc :brake-released f))

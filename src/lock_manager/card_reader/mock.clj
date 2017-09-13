@@ -5,20 +5,39 @@
             [com.stuartsierra.component :as comp]
             [taoensso.timbre :as l]
             [lock-manager.card-reader.protocols :refer :all]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [seesaw.core :as ss]))
 
-(defrecord MockCardReader [call-backs])
+(defrecord MockCardReader [call-backs frame])
 
 (extend-type MockCardReader
 
   comp/Lifecycle
 
   (start [this]
-    (l/info "[MockCardReader] component started")
-    (assoc this :call-backs (atom {})))
+    (let [call-backs (atom {})
+          frame (ss/frame :title "Card reader"
+                          :content (ss/flow-panel
+                                    :items (let [text-input (ss/text :id :rfid :text "7564F8C2")]
+                                             [text-input
+                                             (ss/button :text "Hold to swap"
+                                                        :listen [:mouse-pressed (fn [_]
+                                                                                  (when-let [on-reader (get @call-backs :on-reader)]
+                                                                                    (on-reader (ss/text text-input))))
+                                                                 :mouse-released (fn [_]
+                                                                                   (when-let [off-reader (get @call-backs :off-reader)]
+                                                                                     (off-reader (ss/text text-input))))])])))]
+      (l/info "[MockCardReader] component started")
+      (-> frame
+        ss/pack!
+        ss/show!)
+      (assoc this
+             :call-backs call-backs
+             :frame frame)))
 
   (stop [this]
     (l/info "[MockCardReader] component stopped")
+    (ss/dispose! (:frame this))
     this)
   
 

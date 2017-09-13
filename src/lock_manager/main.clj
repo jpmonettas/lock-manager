@@ -8,6 +8,8 @@
             [lock-manager.car.genius :refer [make-car-genius]]
             [lock-manager.core :refer [make-core]]
             [lock-manager.web-server :refer [make-web-server]]
+            [lock-manager.gpio.pi-one :refer [make-pi-one-gpio]]
+            [lock-manager.gpio.mock :refer [make-mock-gpio]]
             [taoensso.timbre :as l]
             [clojure.spec.alpha :as s]
             [clojure.spec.gen.alpha :as sgen]
@@ -21,19 +23,21 @@
    :card-reader (case (:card-reader opts)
                   "serial" (make-serial-card-reader)
                   (make-mock-card-reader))
-   :car (case (:car opts)
-          "genius" (make-car-genius)
-          (make-car-mock))
+   :car (comp/using (make-car-genius)
+                    [:gpio])
    :web-server (make-web-server {:start-server? true})
    :core (comp/using (make-core)
-                     [:car :card-reader :web-server])))
+                     [:car :card-reader :web-server])
+   :gpio (case (:gpio opts)
+           "pione" (make-pi-one-gpio)
+           (make-mock-gpio))))
 
-(s/def ::car-opt (s/cat :pref #{"--car"}
-                        :val #{"genius" "mock"}))
 (s/def ::card-reader-opt (s/cat :pref #{"--card-reader"}
                                 :val #{"serial" "mock"}))
-(s/def ::args (s/* (s/alt :car ::car-opt
-                          :card-reader ::card-reader-opt)))
+(s/def ::gpio-opt (s/cat :pref #{"--gpio"}
+                         :val #{"pione" "mock"}))
+(s/def ::args (s/* (s/alt :card-reader ::card-reader-opt
+                          :gpio ::gpio-opt)))
 
 (defn start-system [opts]
   (alter-var-root #'system (fn [s] (comp/start (create-system opts)))))
@@ -49,8 +53,8 @@
   (let [conformed-opts (s/conform ::args args)]
     (if (not= conformed-opts ::s/invalid)
       (let [opts (into {} conformed-opts)
-            opts' {:car (-> opts :car :val) 
-                   :card-reader (-> opts :card-reader :val)}]
+            opts' {:card-reader (-> opts :card-reader :val)
+                   :gpio (-> opts :gpio :val)}]
 
         (nrepl/start-server :handler cider-nrepl-handler
                             :port 7778
