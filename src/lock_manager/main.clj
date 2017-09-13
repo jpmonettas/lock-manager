@@ -50,16 +50,18 @@
     (if (not= conformed-opts ::s/invalid)
       (let [opts (into {} conformed-opts)
             opts' {:car (-> opts :car :val) 
-                  :card-reader (-> opts :card-reader :val)}]
-        (start-system opts')
-        
-        (l/info "System started with " opts')
-        
+                   :card-reader (-> opts :card-reader :val)}]
+
         (nrepl/start-server :handler cider-nrepl-handler
                             :port 7778
                             :bind "0.0.0.0")
         (l/info "Nrepl server started.")
 
+
+        (start-system opts')
+        
+        (l/info "System started with " opts')
+        
         (Thread/setDefaultUncaughtExceptionHandler
          (reify
            Thread$UncaughtExceptionHandler

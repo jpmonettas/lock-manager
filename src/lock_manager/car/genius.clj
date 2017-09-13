@@ -7,13 +7,16 @@
             [clojure.core.async :as async])
   (:import com.pi4j.wiringpi.Gpio))
 
+;; Output pins
 (def lock-door-relay-pin 2)
 (def unlock-door-relay-pin 3)
 (def running-led-pin 0)
+(def power-pin 1)
 
-(def brake-pin nil)
-(def button-pin nil)
-(def power-pin nil)
+;; Input pins
+(def brake-pin 4)
+(def button-pin 5)
+
 
 (defrecord Genius [running-proc-ctrl brake-proc-ctrl button-proc-ctrl])
 
@@ -53,9 +56,11 @@
     
     (Gpio/wiringPiSetup)
     (Gpio/pinMode lock-door-relay-pin Gpio/OUTPUT)
+    (Gpio/digitalWrite lock-door-relay-pin Gpio/HIGH)
     (Gpio/pinMode unlock-door-relay-pin Gpio/OUTPUT)
+    (Gpio/digitalWrite unlock-door-relay-pin Gpio/HIGH)
+
     (Gpio/pinMode power-pin Gpio/OUTPUT)
-    
     (Gpio/pinMode button-pin Gpio/INPUT)
     
     (let [call-backs (atom {})
@@ -84,14 +89,14 @@
   CarP
 
   (lock-doors [this]
-    (Gpio/digitalWrite lock-door-relay-pin Gpio/HIGH)
+    (Gpio/digitalWrite lock-door-relay-pin Gpio/LOW)
     (async/<!! (async/timeout 600))
-    (Gpio/digitalWrite lock-door-relay-pin Gpio/LOW))
+    (Gpio/digitalWrite lock-door-relay-pin Gpio/HIGH))
   
   (unlock-doors [this]
-    (Gpio/digitalWrite unlock-door-relay-pin Gpio/HIGH)
+    (Gpio/digitalWrite unlock-door-relay-pin Gpio/LOW)
     (async/<!! (async/timeout 600))
-    (Gpio/digitalWrite unlock-door-relay-pin Gpio/LOW))
+    (Gpio/digitalWrite unlock-door-relay-pin Gpio/HIGH))
 
   (switch-power-on [_]
     (Gpio/digitalWrite power-pin Gpio/HIGH))
