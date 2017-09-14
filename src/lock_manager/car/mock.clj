@@ -38,8 +38,8 @@
   (switch-power-on [{:keys [power-on?]}] (reset! power-on? true))
   (switch-power-off [{:keys [power-on?]}] (reset! power-on? false))
   
-  (register-button-released-fn [this f] (swap! (:call-backs this) assoc :button-pressed f))
-  (register-button-pressed-fn [this f] (swap! (:call-backs this) assoc :button-released f)))
+  (register-button-released-fn [this f] (swap! (:call-backs this) assoc :button-released f))
+  (register-button-pressed-fn [this f] (swap! (:call-backs this) assoc :button-pressed f)))
 
 (defn make-car-mock []
   (map->MockCar {}))

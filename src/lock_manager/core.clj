@@ -133,7 +133,9 @@
   [{:keys [db current-time-millis]} [_]]
   (let [{:keys [car-power-on? button-pressed-timestamp]} db
         duration (- current-time-millis button-pressed-timestamp)
-        db' (assoc db :button-pressed? false)]
+        db' (-> db
+                (assoc :button-pressed? false)
+                (dissoc :button-pressed-timestamp))]
     (cond
 
       (and (not car-power-on?)
@@ -226,8 +228,8 @@
       (rf/reg-event-fx :set-door-unlock-method [ check-spec] set-door-unlock-method-ev)
       (rf/reg-event-fx :button-pressed [(rf/inject-cofx :current-time-millis)  check-spec] button-pressed-ev)
       (rf/reg-event-fx :button-released [(rf/inject-cofx :current-time-millis)  check-spec] button-released-ev)
-      (rf/reg-event-fx :break-pressed [(rf/inject-cofx :current-time-millis)  check-spec] break-pressed-ev)
-      (rf/reg-event-fx :break-released [ check-spec] break-released-ev)
+      (rf/reg-event-fx :brake-pressed [(rf/inject-cofx :current-time-millis)  check-spec] break-pressed-ev)
+      (rf/reg-event-fx :brake-released [ check-spec] break-released-ev)
       
       ;; Register FXs
       (rf/reg-fx :lock-doors (fn [_] (lock-doors car)))
@@ -240,10 +242,10 @@
                                (spit file-path data :append false)))
 
       ;; Events from car
-      (register-break-pressed-fn car #(async/>!! re-frame-ch [:break-pressed]))
-      (register-break-released-fn car #(async/>!! re-frame-ch [:break-released]))
-      (register-button-pressed-fn car #(async/>!! re-frame-ch [:button-released]))
-      (register-button-released-fn car #(async/>!! re-frame-ch [:button-pressed]))
+      (register-break-pressed-fn car #(async/>!! re-frame-ch [:brake-pressed]))
+      (register-break-released-fn car #(async/>!! re-frame-ch [:brake-released]))
+      (register-button-pressed-fn car #(async/>!! re-frame-ch [:button-pressed]))
+      (register-button-released-fn car #(async/>!! re-frame-ch [:button-released]))
 
       ;; Events from card reader
       (register-card-on-reader-fn card-reader #(async/>!! re-frame-ch [:card-on-reader %]))

@@ -6,12 +6,12 @@
             [taoensso.timbre :as l]
             [inspectable.repl :as ir]
             [clojure.spec.alpha :as s]
-            [com.stuartsierra.component.repl :refer [set-init system stop]]))
+            [com.stuartsierra.component.repl :refer [set-init system stop start]]))
 
 (defn reset []
   (com.stuartsierra.component.repl/reset))
 
-(set-init (fn [_] (main/create-system {:car "genius" :card-reader "mock" :gpio "mock"})))
+(set-init (fn [_] (main/create-system {:card-reader "mock" :gpio "mock"})))
 
 (defn car-cmp [] (:car system))
 (defn card-r-cmp [] (:card-reader system))

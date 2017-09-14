@@ -26,7 +26,7 @@
                                    high-or-low)))
   (read-pin [this pin-number]
     ({0 :low
-      1 :high}(Gpio/digitalRead pin-number))))
+      1 :high} (Gpio/digitalRead pin-number))))
 
 (defn make-pi-one-gpio []
   (map->PiOneGpio {}))

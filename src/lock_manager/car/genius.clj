@@ -22,20 +22,21 @@
 (defrecord Genius [running-proc-ctrl brake-proc-ctrl button-proc-ctrl gpio])
 
 (defn start-running-proc [gpio]
+  (l/info "[Genius] Running thread started")
   (utils/interruptible-go-loop []
     (set-pin gpio running-led-pin :high)
     (async/<! (async/timeout 1000))
     (set-pin gpio running-led-pin :low)
     (async/<! (async/timeout 1000))
-    (recur))
-  (l/info "[Genius] Running thread started"))
+    (recur)))
 
 (defn start-input-proc [pin call-backs-a on-key off-key gpio]
+  (l/info "[Genius] input thread started")
   (utils/interruptible-go-loop [state (read-pin gpio pin)]
      (async/<! (async/timeout 100))
      (let [new-state (read-pin gpio pin)]
        (if (not= state new-state)
-         (do (if (= new-state 1)
+         (do (if (= new-state :high)
                (when-let [on-fn (get @call-backs-a on-key)]
                  (on-fn)
                  (l/debug "Fired " on-key))
@@ -43,8 +44,7 @@
                  (off-fn)
                  (l/debug "Fired " off-key)))
              (recur new-state))
-         (recur state))))
-  (l/info "[Genius] input thread started"))
+         (recur state)))))
 
 
 (extend-type Genius
@@ -105,8 +105,8 @@
   (register-break-pressed-fn [this f] (swap! (:call-backs this) assoc :brake-pressed f))
   (register-break-released-fn [this f] (swap! (:call-backs this) assoc :brake-released f))
   
-  (register-button-released-fn [this f] (swap! (:call-backs this) assoc :button-pressed f))
-  (register-button-pressed-fn [this f] (swap! (:call-backs this) assoc :button-released f)))
+  (register-button-pressed-fn [this f] (swap! (:call-backs this) assoc :button-pressed f))
+  (register-button-released-fn [this f] (swap! (:call-backs this) assoc :button-released f)))
 
 (defn make-car-genius []
   (map->Genius {}))
