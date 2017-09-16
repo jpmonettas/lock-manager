@@ -13,10 +13,11 @@
 (def unlock-door-relay-pin 15)
 
 (def power-pin 12)
+(def ignition-pin 16)
 
 ;; Input pins
-(def brake-pin 16)
-(def button-pin 18)
+(def brake-pin 18)
+(def button-pin 22)
 
 
 (defrecord Genius [running-proc-ctrl brake-proc-ctrl button-proc-ctrl gpio])
@@ -58,6 +59,7 @@
           _    (config-pins gpio [[lock-door-relay-pin :out :high "lock-door"]
                                   [unlock-door-relay-pin :out :high "unlock-door"]
                                   [power-pin :out :high "power"]
+                                  [ignition-pin :out :high "ignition"]
                                   [brake-pin :in nil "break"]
                                   [button-pin :in nil "button"]
                                   [running-led-pin :out nil "running"]])
@@ -97,11 +99,17 @@
     (set-pin gpio unlock-door-relay-pin :high))
 
   (switch-power-on [{:keys [gpio]}]
-    (set-pin gpio power-pin :high))
+    (set-pin gpio power-pin :low))
   
   (switch-power-off [{:keys [gpio]}]
-    (set-pin gpio power-pin :low))
-    
+    (set-pin gpio power-pin :high))
+
+  (enable-ignition [{:keys [gpio]}]
+    (set-pin gpio ignition-pin :low))
+  
+  (disable-ignition [{:keys [gpio]}]
+    (set-pin gpio ignition-pin :high))
+  
   (register-break-pressed-fn [this f] (swap! (:call-backs this) assoc :brake-pressed f))
   (register-break-released-fn [this f] (swap! (:call-backs this) assoc :brake-released f))
   

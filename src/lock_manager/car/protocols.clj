@@ -9,6 +9,8 @@
   
   (switch-power-on [_])
   (switch-power-off [_])
+  (enable-ignition [_])
+  (disable-ignition [_])
   
   (register-button-released-fn [_ f])
   (register-button-pressed-fn [_ f]))

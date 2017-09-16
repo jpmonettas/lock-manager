@@ -31,6 +31,9 @@
   (unlock-doors [{:keys [locked?]}]
     (reset! locked? false)
     (l/info "Unlocked car door"))
+
+  (enable-ignition [_])
+  (disable-ignition [_])
   
   (register-break-pressed-fn [this f] (swap! (:call-backs this) assoc :brake-pressed f))
   (register-break-released-fn [this f] (swap! (:call-backs this) assoc :brake-released f))

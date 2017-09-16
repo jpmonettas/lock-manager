@@ -140,13 +140,14 @@
 
       (and (not car-power-on?)
            (current-reading-authorized? db))
-      {:db (assoc db' :power-on? true)
+      {:db (assoc db' :car-power-on? true)
        :switch-power-on true}
 
       (and car-power-on?
            (:break-pressed? db))
-      {:db (assoc db' :power-on? false)
-       :switch-power-off true}
+      {:db (assoc db' :car-power-on? false)
+       :switch-power-off true
+       :disable-button-ignition true}
 
       :else
       {:db db'})))
@@ -154,20 +155,19 @@
 (defn break-pressed-ev
   "Every time the car brake is pressed."
   [{:keys [db]} _]
-  (when (current-reading-authorized? db)
-    (let [db' (assoc db :break-pressed? true)]
-      (if (:power-on? db')
-        {:enable-button-ignition true
-         :db db'}
-        
-        {:db db'}))))
+  (let [db' (assoc db :break-pressed? true)]
+    (if (and (current-reading-authorized? db)
+             (:car-power-on? db'))
+      {:enable-button-ignition true
+       :db db'}
+      
+      {:db db'})))
 
 (defn break-released-ev
   "Every time the car brake is relased."
   [{:keys [db]} _]
-  (when (current-reading-authorized? db)
-    {:db (assoc db :break-pressed? false)
-     :disable-button-ignition true}))
+  {:db (assoc db :break-pressed? false)
+   :disable-button-ignition true})
 
 ;;;;;;;;;;;;;;;
 ;; Component ;;
@@ -232,6 +232,8 @@
       (rf/reg-event-fx :brake-released [ check-spec] break-released-ev)
       
       ;; Register FXs
+      (rf/reg-fx :enable-button-ignition (fn [_] (enable-ignition car)))
+      (rf/reg-fx :disable-button-ignition (fn [_] (disable-ignition car)))
       (rf/reg-fx :lock-doors (fn [_] (lock-doors car)))
       (rf/reg-fx :unlock-doors (fn [_] (unlock-doors car)))
       (rf/reg-fx :switch-power-off (fn [_] (switch-power-off car)))
