@@ -15,9 +15,12 @@
   (ss/label :id id :text id :border (ssborder/line-border)))
 
 (defn make-input-pin [id label press-fn release-fn]
-  (ss/button :text (str id " " label)
-             :listen [:mouse-pressed (fn [_] (press-fn id))
-                      :mouse-released (fn [_] (release-fn id))]))
+  (ss/toggle :text (str id " " label)
+             :listen [:item-state-changed (fn [e]
+                                            (if (= 1 (.getStateChange e))
+                                              (press-fn id)
+                                              (release-fn id)))]))
+(require '[seesaw.dev :as d])
 
 (defn make-output-pin [id label low-high]
   (ss/label :id id

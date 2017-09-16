@@ -20,13 +20,13 @@
                           :content (ss/flow-panel
                                     :items (let [text-input (ss/text :id :rfid :text "7564F8C2")]
                                              [text-input
-                                             (ss/button :text "Hold to swap"
-                                                        :listen [:mouse-pressed (fn [_]
-                                                                                  (when-let [on-reader (get @call-backs :on-reader)]
-                                                                                    (on-reader (ss/text text-input))))
-                                                                 :mouse-released (fn [_]
-                                                                                   (when-let [off-reader (get @call-backs :off-reader)]
-                                                                                     (off-reader (ss/text text-input))))])])))]
+                                              (ss/toggle :text "Toggle to swap"
+                                                         :listen [:item-state-changed (fn [e]
+                                                                                        (if (= 1 (.getStateChange e))
+                                                                                          (when-let [on-reader (get @call-backs :on-reader)]
+                                                                                            (on-reader (ss/text text-input)))
+                                                                                          (when-let [off-reader (get @call-backs :off-reader)]
+                                                                                            (off-reader (ss/text text-input)))))])])))]
       (l/info "[MockCardReader] component started")
       (-> frame
         ss/pack!
