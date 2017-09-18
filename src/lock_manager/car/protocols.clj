@@ -4,8 +4,8 @@
   (lock-doors [_])
   (unlock-doors [_])
 
-  (register-break-pressed-fn [_ f])
-  (register-break-released-fn [_ f])
+  (register-brake-pressed-fn [_ f])
+  (register-brake-released-fn [_ f])
   
   (switch-power-on [_])
   (switch-power-off [_])

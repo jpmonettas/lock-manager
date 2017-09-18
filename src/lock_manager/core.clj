@@ -10,7 +10,8 @@
             [taoensso.timbre :as l]
             [clojure.string :as str]
             [clojure.core.async :as async]
-            [clojure.edn :as edn]))
+            [clojure.edn :as edn]
+            [lock-manager.utils :as utils]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IMPORTANT! : Never call re-frame/dispatch directly, put the events in       ;;
@@ -35,18 +36,19 @@
 (s/def :db/door-unlock-method #{:both :only-key})
 (s/def :db/authorized-tags (s/map-of :rfid.tag/id :db/tag))
 (s/def :db/reading-tag :rfid.tag/id)
-(s/def :db/break-pressed? boolean?)
+(s/def :db/brake-pressed? boolean?)
+(s/def :db/during-ignition? boolean?)
 (s/def :db/button-pressed? boolean?)
 (s/def :db/car-power-on? boolean?)
 (s/def :db/reading-tag-timestamp pos-int?)
 (s/def :db/button-pressed-timestamp pos-int?)
 (s/def ::db (s/keys :req-un [:db/door-unlock-method
                              :db/authorized-tags]
-                    :opt-un [
-                             :db/reading-tag
+                    :opt-un [:db/reading-tag
                              :db/reading-tag-timestamp
                              :db/button-pressed-timestamp
-                             :db/break-pressed?
+                             :db/brake-pressed?
+                             :db/during-ignition?
                              :db/button-pressed?
                              :db/car-power-on?]))
 
@@ -59,8 +61,8 @@
 (s/def :evt/set-door-unlock-method (s/tuple #{:set-door-unlock-method} :db/door-unlock-method))
 (s/def :evt/button-pressed         (s/tuple #{:button-pressed}))
 (s/def :evt/button-released        (s/tuple #{:button-released}))
-(s/def :evt/break-pressed          (s/tuple #{:break-pressed}))
-(s/def :evt/break-released         (s/tuple #{:break-released}))
+(s/def :evt/brake-pressed          (s/tuple #{:brake-pressed}))
+(s/def :evt/brake-released         (s/tuple #{:brake-released}))
 
 
 (def db-file "./lock-manager-db.edn")
@@ -71,6 +73,22 @@
 
 (defn initialize-db-ev [{:keys [read-up-edn]} [_ initial-db]]
   {:db (or read-up-edn initial-db)})
+
+(defn current-reading-authorized? [db]
+  (and (:reading-tag db)
+       (contains? (:authorized-tags db)
+                  (:reading-tag db))))
+
+(defn tick-ev [{:keys [db current-time-millis]} _]
+  (when (and (:car-power-on? db)
+             (:button-pressed? db)
+             (current-reading-authorized? db)
+             (:brake-pressed? db)
+             (> (- current-time-millis (:button-pressed-timestamp db))
+                2000))
+    {:enable-button-ignition true
+     :dispatch [:button-released]
+     :db (assoc db :during-ignition? true)}))
 
 (defn list-tags-ev [{:keys [db]} [_ answer-id]]
   {:answer [answer-id (vals (:authorized-tags db))]})
@@ -91,11 +109,6 @@
   {:db (assoc db
               :reading-tag tag-id
               :reading-tag-timestamp current-time-millis)})
-
-(defn current-reading-authorized? [db]
-  (and (:reading-tag db)
-       (contains? (:authorized-tags db)
-                  (:reading-tag db))))
 
 (defn card-off-reader-ev [{:keys [db current-time-millis]} [_ tag-id]]
   (let [authorized? (current-reading-authorized? db)
@@ -132,7 +145,6 @@
   "Every time panel button is released."
   [{:keys [db current-time-millis]} [_]]
   (let [{:keys [car-power-on? button-pressed-timestamp]} db
-        duration (- current-time-millis button-pressed-timestamp)
         db' (-> db
                 (assoc :button-pressed? false)
                 (dissoc :button-pressed-timestamp))]
@@ -144,29 +156,27 @@
        :switch-power-on true}
 
       (and car-power-on?
-           (:break-pressed? db))
-      {:db (assoc db' :car-power-on? false)
-       :switch-power-off true
-       :disable-button-ignition true}
+           (:brake-pressed? db)
+           (not (:during-ignition? db)))
+      {:db (assoc db'
+                  :car-power-on? false)
+       :switch-power-off true}
 
       :else
       {:db db'})))
 
-(defn break-pressed-ev
+(defn brake-pressed-ev
   "Every time the car brake is pressed."
   [{:keys [db]} _]
-  (let [db' (assoc db :break-pressed? true)]
-    (if (and (current-reading-authorized? db)
-             (:car-power-on? db'))
-      {:enable-button-ignition true
-       :db db'}
-      
-      {:db db'})))
+  (let [db' (assoc db :brake-pressed? true)]
+    {:db db'}))
 
-(defn break-released-ev
+(defn brake-released-ev
   "Every time the car brake is relased."
   [{:keys [db]} _]
-  {:db (assoc db :break-pressed? false)
+  {:db (assoc db
+              :brake-pressed? false
+              :during-ignition? false)
    :disable-button-ignition true})
 
 ;;;;;;;;;;;;;;;
@@ -197,12 +207,17 @@
   
   (start [{:keys [car card-reader web-server] :as this}]
     (let [answers-proms (atom {})
-          re-frame-ch (async/chan)]
+          re-frame-ch (async/chan)
+          ticks-ctrl-ch (utils/interruptible-go-loop []
+                          (async/>! re-frame-ch [:tick])
+                          (async/<! (async/timeout 1000))
+                          (recur))]
 
       ;; Dispatch all re-frame events sequentially to avoid
       ;; clojure.lang.ExceptionInfo: re-frame: router state transition not found. :scheduled :finish-run
       (async/go-loop []
         (when-let [ev (async/<! re-frame-ch)]
+          (when-not (= (first ev) :tick) (l/debug "Dispatched " ev))
           (rf/dispatch ev)
           (recur)))
 
@@ -220,6 +235,7 @@
       ;; Register Events
       
       (rf/reg-event-fx :initialize-db [(rf/inject-cofx :read-up-edn db-file) check-spec] initialize-db-ev)
+      (rf/reg-event-fx :tick [(rf/inject-cofx :current-time-millis)] tick-ev)
       (rf/reg-event-fx :list-tags [ check-spec] list-tags-ev)
       (rf/reg-event-fx :upsert-tag [ check-spec] upsert-tag-ev)
       (rf/reg-event-fx :rm-tag [ check-spec] rm-tag-ev)
@@ -228,8 +244,8 @@
       (rf/reg-event-fx :set-door-unlock-method [ check-spec] set-door-unlock-method-ev)
       (rf/reg-event-fx :button-pressed [(rf/inject-cofx :current-time-millis)  check-spec] button-pressed-ev)
       (rf/reg-event-fx :button-released [(rf/inject-cofx :current-time-millis)  check-spec] button-released-ev)
-      (rf/reg-event-fx :brake-pressed [(rf/inject-cofx :current-time-millis)  check-spec] break-pressed-ev)
-      (rf/reg-event-fx :brake-released [ check-spec] break-released-ev)
+      (rf/reg-event-fx :brake-pressed [(rf/inject-cofx :current-time-millis)  check-spec] brake-pressed-ev)
+      (rf/reg-event-fx :brake-released [ check-spec] brake-released-ev)
       
       ;; Register FXs
       (rf/reg-fx :enable-button-ignition (fn [_] (enable-ignition car)))
@@ -244,8 +260,8 @@
                                (spit file-path data :append false)))
 
       ;; Events from car
-      (register-break-pressed-fn car #(async/>!! re-frame-ch [:brake-pressed]))
-      (register-break-released-fn car #(async/>!! re-frame-ch [:brake-released]))
+      (register-brake-pressed-fn car #(async/>!! re-frame-ch [:brake-pressed]))
+      (register-brake-released-fn car #(async/>!! re-frame-ch [:brake-released]))
       (register-button-pressed-fn car #(async/>!! re-frame-ch [:button-pressed]))
       (register-button-released-fn car #(async/>!! re-frame-ch [:button-released]))
 
@@ -264,13 +280,16 @@
       (l/info "[Core] component started.")
       
       (assoc this
-             :re-frame-ch re-frame-ch)))
+             :re-frame-ch re-frame-ch
+             :ticks-ctrl-ch ticks-ctrl-ch)))
   
-  (stop [{:keys [re-frame-ch] :as this}]
+  (stop [{:keys [re-frame-ch ticks-ctrl-ch] :as this}]
     (async/close! re-frame-ch)
+    (async/>!! ticks-ctrl-ch :stop)
     (l/info "[Core] component stopped.")
     (assoc this
-           :re-frame-ch nil)))
+           :re-frame-ch nil
+           :ticks-ctrl-ch nil)))
 
 (defn make-core []
   (map->Core {}))

@@ -9,8 +9,8 @@
 
 ;; Output pins
 (def running-led-pin 11)
-(def lock-door-relay-pin 13)
-(def unlock-door-relay-pin 15)
+(def lock-door-relay-pin 15)
+(def unlock-door-relay-pin 13)
 
 (def power-pin 12)
 (def ignition-pin 16)
@@ -60,7 +60,7 @@
                                   [unlock-door-relay-pin :out :high "unlock-door"]
                                   [power-pin :out :high "power"]
                                   [ignition-pin :out :high "ignition"]
-                                  [brake-pin :in nil "break"]
+                                  [brake-pin :in nil "brake"]
                                   [button-pin :in nil "button"]
                                   [running-led-pin :out nil "running"]])
           running-proc-ctrl (start-running-proc gpio)
@@ -88,30 +88,35 @@
   CarP
 
   (lock-doors [{:keys [gpio]}]
-
+    (l/debug "Locking doors")
     (set-pin gpio lock-door-relay-pin :low)
     (async/<!! (async/timeout 600))
     (set-pin gpio lock-door-relay-pin :high))
   
   (unlock-doors [{:keys [gpio]}]
+    (l/debug "Unlocking doors");
     (set-pin gpio unlock-door-relay-pin :low)
     (async/<!! (async/timeout 600))
     (set-pin gpio unlock-door-relay-pin :high))
 
   (switch-power-on [{:keys [gpio]}]
+    (l/debug "Switching car on")
     (set-pin gpio power-pin :low))
   
   (switch-power-off [{:keys [gpio]}]
+    (l/debug "Switching car off")
     (set-pin gpio power-pin :high))
 
   (enable-ignition [{:keys [gpio]}]
+    (l/debug "Enabling ignition")
     (set-pin gpio ignition-pin :low))
   
   (disable-ignition [{:keys [gpio]}]
+    (l/debug "Disabling ignition")
     (set-pin gpio ignition-pin :high))
   
-  (register-break-pressed-fn [this f] (swap! (:call-backs this) assoc :brake-pressed f))
-  (register-break-released-fn [this f] (swap! (:call-backs this) assoc :brake-released f))
+  (register-brake-pressed-fn [this f] (swap! (:call-backs this) assoc :brake-pressed f))
+  (register-brake-released-fn [this f] (swap! (:call-backs this) assoc :brake-released f))
   
   (register-button-pressed-fn [this f] (swap! (:call-backs this) assoc :button-pressed f))
   (register-button-released-fn [this f] (swap! (:call-backs this) assoc :button-released f)))

@@ -35,8 +35,8 @@
   (enable-ignition [_])
   (disable-ignition [_])
   
-  (register-break-pressed-fn [this f] (swap! (:call-backs this) assoc :brake-pressed f))
-  (register-break-released-fn [this f] (swap! (:call-backs this) assoc :brake-released f))
+  (register-brake-pressed-fn [this f] (swap! (:call-backs this) assoc :brake-pressed f))
+  (register-brake-released-fn [this f] (swap! (:call-backs this) assoc :brake-released f))
   
   (switch-power-on [{:keys [power-on?]}] (reset! power-on? true))
   (switch-power-off [{:keys [power-on?]}] (reset! power-on? false))
