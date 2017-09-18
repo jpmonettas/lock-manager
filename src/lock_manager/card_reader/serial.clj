@@ -21,7 +21,9 @@
   comp/Lifecycle
 
   (start [this]
-    (let [serial-port (serial/open "/dev/ttyACM0" :baud-rate 9600)
+    ;; in raspbian sudo vi /etc/udev/rules.d/10-local.rules
+    ;; ACTION=="add", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6015", SYMLINK+="card_reader"
+    (let [serial-port (serial/open "/dev/card_reader" :baud-rate 9600)
           call-backs (atom {})
           reads-ch (async/chan)]
       
