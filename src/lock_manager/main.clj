@@ -13,7 +13,9 @@
             [taoensso.timbre :as l]
             [clojure.spec.alpha :as s]
             [clojure.spec.gen.alpha :as sgen]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [taoensso.timbre.appenders.core :refer [println-appender]]
+            [taoensso.timbre.appenders.3rd-party.rotor :refer [rotor-appender]])
   (:gen-class))
 
 (def system nil)
@@ -46,9 +48,12 @@
   (alter-var-root #'system (fn [s]
                              (when s (comp/stop s)))))
 
-
 (defn -main
   [& args]
+
+  (l/merge-config! {:log-level :debug 
+                    :appenders {:rotor (rotor-appender {:path "lock-manager.log"})}})
+
 
   (let [conformed-opts (s/conform ::args args)]
     (if (not= conformed-opts ::s/invalid)
