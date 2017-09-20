@@ -41,6 +41,7 @@
 (s/def :db/button-pressed? boolean?)
 (s/def :db/car-power-on? boolean?)
 (s/def :db/reading-tag-timestamp pos-int?)
+(s/def :db/authorized-since pos-int?)
 (s/def :db/button-pressed-timestamp pos-int?)
 (s/def ::db (s/keys :req-un [:db/door-unlock-method
                              :db/authorized-tags]
@@ -48,6 +49,7 @@
                              :db/reading-tag-timestamp
                              :db/button-pressed-timestamp
                              :db/brake-pressed?
+                             :db/authorized-since
                              :db/during-ignition?
                              :db/button-pressed?
                              :db/car-power-on?]))
@@ -74,21 +76,23 @@
 (defn initialize-db-ev [{:keys [read-up-edn]} [_ initial-db]]
   {:db (or read-up-edn initial-db)})
 
-(defn current-reading-authorized? [db]
-  (and (:reading-tag db)
-       (contains? (:authorized-tags db)
-                  (:reading-tag db))))
-
 (defn tick-ev [{:keys [db current-time-millis]} _]
-  (when (and (:car-power-on? db)
-             (:button-pressed? db)
-             (current-reading-authorized? db)
-             (:brake-pressed? db)
-             (> (- current-time-millis (:button-pressed-timestamp db))
-                2000))
-    {:enable-button-ignition true
-     :dispatch [:button-released]
-     :db (assoc db :during-ignition? true)}))
+  (cond-> {:db db}
+
+    (and (:car-power-on? db)
+         (:button-pressed? db)
+         (:authorized-since db)
+         (:brake-pressed? db)
+         (> (- current-time-millis (:button-pressed-timestamp db))
+            2000))
+    (-> (assoc :enable-button-ignition true)
+        (assoc-in [:db :during-ignition?] true)
+        (assoc :dispatch [:button-released]))
+
+    (and (:authorized-since db)
+         (> (- current-time-millis (:authorized-since db))
+            45000))
+    (update :db dissoc :authorized-since)))
 
 (defn list-tags-ev [{:keys [db]} [_ answer-id]]
   {:answer [answer-id (vals (:authorized-tags db))]})
@@ -106,12 +110,15 @@
     :write-down [db-file db']}))
 
 (defn card-on-reader-ev [{:keys [db current-time-millis]} [_ tag-id]]
-  {:db (assoc db
-              :reading-tag tag-id
-              :reading-tag-timestamp current-time-millis)})
+  {:db (cond-> (assoc db
+                      :reading-tag tag-id
+                      :reading-tag-timestamp current-time-millis)
+
+               (contains? (:authorized-tags db) tag-id)
+               (assoc :authorized-since current-time-millis))})
 
 (defn card-off-reader-ev [{:keys [db current-time-millis]} [_ tag-id]]
-  (let [authorized? (current-reading-authorized? db)
+  (let [authorized? (not (nil? (:authorized-since db)))
         duration (- current-time-millis (:reading-tag-timestamp db))]
    (-> (cond
         
@@ -151,7 +158,7 @@
     (cond
 
       (and (not car-power-on?)
-           (current-reading-authorized? db))
+           (:authorized-since db))
       {:db (assoc db' :car-power-on? true)
        :switch-power-on true}
 
