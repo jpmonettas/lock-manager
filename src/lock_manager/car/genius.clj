@@ -17,7 +17,7 @@
 
 ;; Input pins
 (def brake-pin 18)
-(def button-pin 22)
+(def button-pin 7)
 
 
 (defrecord Genius [running-proc-ctrl brake-proc-ctrl button-proc-ctrl gpio])
@@ -37,7 +37,7 @@
      (async/<! (async/timeout 100))
      (let [new-state (read-pin gpio pin)]
        (if (not= state new-state)
-         (do (if (= new-state :high)
+         (do (if (= new-state :low)
                (when-let [on-fn (get @call-backs-a on-key)]
                  (on-fn)
                  (l/debug "Fired " on-key))
@@ -60,8 +60,8 @@
                                   [unlock-door-relay-pin :out :high "unlock-door"]
                                   [power-pin :out :high "power"]
                                   [ignition-pin :out :high "ignition"]
-                                  [brake-pin :in nil "brake"]
-                                  [button-pin :in nil "button"]
+                                  [brake-pin :in :high "brake"]
+                                  [button-pin :in :high "button"]
                                   [running-led-pin :out nil "running"]])
           running-proc-ctrl (start-running-proc gpio)
           brake-proc-ctrl (start-input-proc brake-pin call-backs :brake-pressed :brake-released gpio)

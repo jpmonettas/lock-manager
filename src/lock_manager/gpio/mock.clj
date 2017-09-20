@@ -56,8 +56,8 @@
                                         (nil? pdet) (make-unused-pin id)
                                         (= in-out :in)  (make-input-pin id
                                                                         label
-                                                                        #(swap! read-status-atom assoc % :high)
-                                                                        #(swap! read-status-atom assoc % :low))
+                                                                        #(swap! read-status-atom assoc % :low)
+                                                                        #(swap! read-status-atom assoc % :high))
                                         (= in-out :out) (make-output-pin id label low-high))]))
                               (into (sorted-map))))
     (ss/config! frame :content (ss/grid-panel :columns 2 :items (vals @pins-widgets))))
@@ -66,7 +66,8 @@
     (ss/config! (get @pins-widgets pin-number) :background (status-color high-or-low)))
   
   (read-pin [{:keys [read-status-atom]} pin-number]
-    (get @read-status-atom pin-number)))
+    (let [v (get @read-status-atom pin-number)]
+      v)))
 
 (defn make-mock-gpio []
   (map->MockGpio {}))
