@@ -24,7 +24,7 @@
   (comp/system-map
    :card-reader (case (:card-reader opts)
                   "serial" (make-serial-card-reader)
-                  (make-mock-card-reader))
+                  (make-mock-card-reader {:ui true}))
    :car (comp/using (make-car-genius)
                     [:gpio])
    :web-server (make-web-server {:start-server? true})

@@ -8,7 +8,7 @@
             [clojure.core.async :as async]
             [seesaw.core :as ss]))
 
-(defrecord MockCardReader [call-backs frame])
+(defrecord MockCardReader [call-backs frame ui])
 
 (extend-type MockCardReader
 
@@ -28,16 +28,17 @@
                                                                                           (when-let [off-reader (get @call-backs :off-reader)]
                                                                                             (off-reader (ss/text text-input)))))])])))]
       (l/info "[MockCardReader] component started")
-      (-> frame
-        ss/pack!
-        ss/show!)
+      (when (:ui this)
+        (-> frame
+            ss/pack!
+            ss/show!))
       (assoc this
              :call-backs call-backs
              :frame frame)))
 
   (stop [this]
     (l/info "[MockCardReader] component stopped")
-    (ss/dispose! (:frame this))
+    (when-let [frame (:frame this)] (ss/dispose! frame))
     this)
   
 
@@ -49,16 +50,15 @@
   (register-card-off-reader-fn [this f]
     (swap! (:call-backs this) assoc :off-reader f)))
 
-(defn make-mock-card-reader []
-  (map->MockCardReader {}))
+(defn make-mock-card-reader [{:keys [ui]}]
+  (map->MockCardReader {:ui ui}))
 
-(defn simulate-read
-  ([card-reader-cmp] (simulate-read card-reader-cmp (sgen/generate (s/gen :rfid.tag/id))))
-  ([card-reader-cmp tag-id] (simulate-read card-reader-cmp tag-id 1000))
-  ([card-reader-cmp tag-id millis]
-   (when-let [on-reader (get @(:call-backs card-reader-cmp) :on-reader)]
-     (on-reader tag-id))
-   (async/<!! (async/timeout millis))
-   (when-let [off-reader (get @(:call-backs card-reader-cmp) :off-reader)]
-     (off-reader tag-id))
-   (async/<!! (async/timeout 1000))))
+(defn simulate-card-on [card-reader-cmp tag-id]
+  (when-let [on-reader (get @(:call-backs card-reader-cmp) :on-reader)]
+    (on-reader tag-id)))
+
+(defn simulate-card-off [card-reader-cmp tag-id]
+  (when-let [off-reader (get @(:call-backs card-reader-cmp) :off-reader)]
+     (off-reader tag-id)))
+
+

@@ -19,6 +19,11 @@
 ;; ordered.                                                                    ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(def authorization-timeout 45000)
+(def locking-duration? #(< 0 % 600))
+(def unlocking-duration? #(< 600 % 5000))
+(def ignition-button-time 2000)
+(def power-off-timeout 10000)
 ;;;;;;;;;;;;;
 ;; Db Spec ;;
 ;;;;;;;;;;;;;
@@ -57,7 +62,7 @@
 (s/def :evt/initialize-db          (s/tuple #{:initialize-db}          ::db))
 (s/def :evt/list-tags              (s/tuple #{:list-tags}))
 (s/def :evt/rm-tag                 (s/tuple #{:rm-tag}                 :rfid.tag/id))
-(s/def :evt/add-tag                (s/tuple #{:add-tag}                :db/tag))
+(s/def :evt/upsert-tag                (s/tuple #{:upsert-tag}                :db/tag))
 (s/def :evt/card-on-reader         (s/tuple #{:card-on-reader}         :rfid.tag/id))
 (s/def :evt/card-off-reader        (s/tuple #{:card-off-reader}        :rfid.tag/id))
 (s/def :evt/set-door-unlock-method (s/tuple #{:set-door-unlock-method} :db/door-unlock-method))
@@ -75,24 +80,6 @@
 
 (defn initialize-db-ev [{:keys [read-up-edn]} [_ initial-db]]
   {:db (or read-up-edn initial-db)})
-
-(defn tick-ev [{:keys [db current-time-millis]} _]
-  (cond-> {:db db}
-
-    (and (:car-power-on? db)
-         (:button-pressed? db)
-         (:authorized-since db)
-         (:brake-pressed? db)
-         (> (- current-time-millis (:button-pressed-timestamp db))
-            2000))
-    (-> (assoc :enable-button-ignition true)
-        (assoc-in [:db :during-ignition?] true)
-        (assoc :dispatch [:button-released]))
-
-    (and (:authorized-since db)
-         (> (- current-time-millis (:authorized-since db))
-            45000))
-    (update :db dissoc :authorized-since)))
 
 (defn list-tags-ev [{:keys [db]} [_ answer-id]]
   {:answer [answer-id (vals (:authorized-tags db))]})
@@ -115,26 +102,38 @@
                       :reading-tag-timestamp current-time-millis)
 
                (contains? (:authorized-tags db) tag-id)
-               (assoc :authorized-since current-time-millis))})
+               (assoc :authorized-since current-time-millis))
+   :dispatch-later [authorization-timeout [:disable-authorized]]})
+
+(defn disable-authorized-ev [{:keys [db current-time-millis]} _]
+  (when (and (:authorized-since db)
+             (> (- current-time-millis (:authorized-since db))
+                (- authorization-timeout 3000))) ;; just to be sure
+    {:db (dissoc db :authorized-since)}))
 
 (defn card-off-reader-ev [{:keys [db current-time-millis]} [_ tag-id]]
-  (let [authorized? (not (nil? (:authorized-since db)))
-        duration (- current-time-millis (:reading-tag-timestamp db))]
-   (-> (cond
-        
-         (and (= (:door-unlock-method db) :both)
-              authorized?
-              (< 600 duration 5000))
-         {:unlock-doors true}
+  (let [authorized? (contains? (:authorized-tags db) tag-id)
+        duration (- current-time-millis (:reading-tag-timestamp db))
+        db' (assoc db :authorized-since current-time-millis)]
+    
+    (when (not authorized?) (l/info "Unauthorized try for " tag-id))
+    
+    (cond-> {:db db}
 
-         (and authorized?
-              (< duration 1000))
-         {:lock-doors true}
-        
-         (not authorized?)
-         (do (l/info "Unauthorized try for " tag-id)
-             nil))
-       (assoc :db (dissoc db :reading-tag)))))
+      authorized?
+      (assoc-in [:db :authorized-since] current-time-millis)
+      
+      (and (= (:door-unlock-method db) :both)
+           authorized?
+           (unlocking-duration? duration))
+      (assoc :unlock-doors true)
+
+      (and authorized?
+           (locking-duration? duration))
+      (assoc :lock-doors true)
+      
+      true
+      (update :db dissoc :reading-tag))))
 
 (defn set-door-unlock-method-ev
   "For setting a new doors unlock method."
@@ -146,7 +145,18 @@
   [{:keys [db current-time-millis]} _]
   {:db (assoc db
               :button-pressed? true
-              :button-pressed-timestamp current-time-millis)})
+              :button-pressed-timestamp current-time-millis)
+   :dispatch-later [ignition-button-time [:button-pressed-check ignition-button-time]]})
+
+(defn button-pressed-check-ev
+  [{:keys [db current-time-millis]} [_ ms]]
+  (when (and (= ignition-button-time ms)
+             (:car-power-on? db)
+             (:button-pressed? db)
+             (:brake-pressed? db))
+    {:db (assoc db :during-ignition? true)
+     :enable-button-ignition true
+     :dispatch [:button-released]}))
 
 (defn button-released-ev
   "Every time panel button is released."
@@ -158,15 +168,16 @@
     (cond
 
       (and (not car-power-on?)
-           (:authorized-since db))
+           (:authorized-since db'))
       {:db (assoc db' :car-power-on? true)
        :switch-power-on true}
 
       (and car-power-on?
-           (:brake-pressed? db)
-           (not (:during-ignition? db)))
+           (:brake-pressed? db')
+           (not (:during-ignition? db')))
       {:db (assoc db'
-                  :car-power-on? false)
+                  :car-power-on? false
+                  :last-power-off-timestamp current-time-millis)
        :switch-power-off true}
 
       :else
@@ -192,6 +203,9 @@
 
 (defrecord Core [car card-reader web-server re-frame-ch])
 
+(defn dispatch [core-cmp ev]
+  (async/>!! (:re-frame-ch core-cmp) ev))
+
 (defn dispatch-for-answer [answers-proms-a re-frame-ch [ev-id & ev-args]]
   (let [p (promise)
         pid (rand-int 1000)]
@@ -214,11 +228,7 @@
   
   (start [{:keys [car card-reader web-server] :as this}]
     (let [answers-proms (atom {})
-          re-frame-ch (async/chan)
-          ticks-ctrl-ch (utils/interruptible-go-loop []
-                          (async/>! re-frame-ch [:tick])
-                          (async/<! (async/timeout 1000))
-                          (recur))]
+          re-frame-ch (async/chan)]
 
       ;; Dispatch all re-frame events sequentially to avoid
       ;; clojure.lang.ExceptionInfo: re-frame: router state transition not found. :scheduled :finish-run
@@ -242,10 +252,11 @@
       ;; Register Events
       
       (rf/reg-event-fx :initialize-db [(rf/inject-cofx :read-up-edn db-file) check-spec] initialize-db-ev)
-      (rf/reg-event-fx :tick [(rf/inject-cofx :current-time-millis)] tick-ev)
-      (rf/reg-event-fx :list-tags [ check-spec] list-tags-ev)
-      (rf/reg-event-fx :upsert-tag [ check-spec] upsert-tag-ev)
-      (rf/reg-event-fx :rm-tag [ check-spec] rm-tag-ev)
+      (rf/reg-event-fx :button-pressed-check [check-spec] button-pressed-check-ev)
+      (rf/reg-event-fx :disable-authorized [(rf/inject-cofx :current-time-millis) check-spec] disable-authorized-ev)
+      (rf/reg-event-fx :list-tags [check-spec] list-tags-ev)
+      (rf/reg-event-fx :upsert-tag [check-spec] upsert-tag-ev)
+      (rf/reg-event-fx :rm-tag [check-spec] rm-tag-ev)
       (rf/reg-event-fx :card-on-reader [(rf/inject-cofx :current-time-millis) ] card-on-reader-ev)
       (rf/reg-event-fx :card-off-reader [(rf/inject-cofx :current-time-millis) ] card-off-reader-ev)
       (rf/reg-event-fx :set-door-unlock-method [ check-spec] set-door-unlock-method-ev)
@@ -255,6 +266,10 @@
       (rf/reg-event-fx :brake-released [ check-spec] brake-released-ev)
       
       ;; Register FXs
+      (rf/reg-fx :dispatch (fn [ev] (async/>!! re-frame-ch ev)))
+      (rf/reg-fx :dispatch-later (fn [[ms ev]]
+                                   (async/go (async/<! (async/timeout ms))
+                                             (async/>! re-frame-ch ev))))
       (rf/reg-fx :enable-button-ignition (fn [_] (enable-ignition car)))
       (rf/reg-fx :disable-button-ignition (fn [_] (disable-ignition car)))
       (rf/reg-fx :lock-doors (fn [_] (lock-doors car)))
@@ -287,16 +302,13 @@
       (l/info "[Core] component started.")
       
       (assoc this
-             :re-frame-ch re-frame-ch
-             :ticks-ctrl-ch ticks-ctrl-ch)))
+             :re-frame-ch re-frame-ch)))
   
-  (stop [{:keys [re-frame-ch ticks-ctrl-ch] :as this}]
+  (stop [{:keys [re-frame-ch] :as this}]
     (async/close! re-frame-ch)
-    (async/>!! ticks-ctrl-ch :stop)
     (l/info "[Core] component stopped.")
     (assoc this
-           :re-frame-ch nil
-           :ticks-ctrl-ch nil)))
+           :re-frame-ch nil)))
 
 (defn make-core []
   (map->Core {}))
