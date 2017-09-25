@@ -13,7 +13,7 @@
                  [re-frame "0.10.1"]
                  [org.clojure/test.check "0.9.0"]
                  [org.clojure/tools.namespace "0.3.0-alpha4"]
-                 [clj-serial "2.0.4-SNAPSHOT"]
+                 [com.fazecast/jSerialComm "1.3.11"]
                  [org.clojure/core.async "0.3.443"]
                  [metosin/compojure-api "2.0.0-alpha7"]
                  [ring/ring-mock "0.3.1"]

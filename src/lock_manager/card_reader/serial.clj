@@ -3,18 +3,12 @@
             [com.stuartsierra.component :as comp]
             [taoensso.timbre :as l]
             [lock-manager.card-reader.protocols :refer :all]
-            [serial.core :as serial]
-            [serial.util :as serial-util]
             [clojure.java.io :as io]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async])
+  (:import [com.fazecast.jSerialComm SerialPort]))
 
 
 (defrecord Serial [call-backs reads-ch serial-port])
-
-(defn reader-loop [reads-ch reader]
-  (async/go-loop []
-    (when (async/>! reads-ch (.readLine reader))
-      (recur))))
 
 (extend-type Serial
 
@@ -23,14 +17,22 @@
   (start [this]
     ;; in raspbian sudo vi /etc/udev/rules.d/10-local.rules
     ;; ACTION=="add", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6015", SYMLINK+="card_reader"
-    (let [serial-port (serial/open "/dev/card_reader" :baud-rate 9600)
+    (let [serial-port (doto (SerialPort/getCommPort "/dev/card_reader")
+                        (.setBaudRate 9600)
+                        (.openPort))
           call-backs (atom {})
-          reads-ch (async/chan)]
-      
-      (serial/listen! serial-port (fn [stream]
-                                    (l/info "Got first data on serial")
-                                    (reader-loop reads-ch (io/reader stream))))
+          reads-ch (async/chan 1 (comp (partition-by #(= % 10))
+                                       (remove #(= 1 (count %)))
+                                       (map #(String. (byte-array %)))))]
 
+      (async/go-loop []
+        (let [buf (byte-array 1024)
+              num-read (.readBytes serial-port buf (count buf))]
+          (doseq [b (take num-read buf)]
+            (async/>! reads-ch b)))
+        (when (.isOpen serial-port)
+          (recur)))
+      
       (async/go-loop []
         (when-let [tid (async/<! reads-ch)]
           (when-let [on-reader (get @call-backs :on-reader)]
@@ -52,7 +54,7 @@
   
   (stop [this]
     (async/close! (:reads-ch this))
-    (serial/close! (:serial-port this))
+    (.closePort (:serial-port this))
     (l/info "[Serial] card reader component stopped.")
     (assoc this
            :reads-ch nil

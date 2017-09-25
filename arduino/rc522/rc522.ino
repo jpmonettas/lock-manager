@@ -38,7 +38,7 @@ void loop() {
 
 
     printHex(rfid.uid.uidByte, rfid.uid.size);
-    Serial.println();
+    Serial.print("\n");
 
 }
 
