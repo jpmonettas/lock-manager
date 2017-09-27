@@ -23,8 +23,7 @@
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as props]
             [lock-manager.utils :as utils]
-            [ring.mock.request :as mock]
-            [re-frame.core :as rf]))
+            [ring.mock.request :as mock]))
 
 ;; (def card-read-gen (gen/fmap (fn [[tid card-on card-off]]
 ;;                                   [(assoc card-on 1 tid)
@@ -107,22 +106,18 @@
 (deftest test-car-doors-authorized
   (let [{:keys [card-reader car]} test-system]
     (let [tag-id "7564F8C2"
-          unlocking-duration 1000 #_(gen/generate (s/gen (s/and int? core/unlocking-duration?)))
-          locking-duration 500 #_(gen/generate (s/gen (s/and int? core/locking-duration?)))]
+          unlocking-duration 1000 
+          locking-duration 500]
       (is (locked? car))
 
       (simulate-card-on card-reader tag-id)
       (Thread/sleep unlocking-duration) 
       (simulate-card-off card-reader tag-id)
-      (Thread/sleep 1000)
-
       (is (not (locked? car)))
 
       (simulate-card-on card-reader tag-id)
       (Thread/sleep locking-duration) 
       (simulate-card-off card-reader tag-id)
-      (Thread/sleep 1000)
-
       (is (locked? car)))))
 
 (deftest test-ignition-flow
@@ -136,28 +131,26 @@
         (is (not (power-on? car)))
         (press-button car)
         (release-button car)
-        (Thread/sleep 1000)
         (is (power-on? car)))
 
       (testing "The ignition activates"
         (is (not (ignition-on? car)))
         (press-brake car)
         (press-button car)
-        (Thread/sleep (+ core/ignition-button-time 1000))
+        (Thread/sleep (+ core/ignition-button-time 500))
         (is (ignition-on? car)))
 
       (testing "Ignition deactivates when brake released"
         (release-brake car)
-        (Thread/sleep 1000)
         (is (not (ignition-on? car))))
 
       (testing "If cars stop while driving (manual transmission issue) I can start it again quickly"
         ;; drive enough so until we lost authorization
-        (Thread/sleep core/authorization-timeout)
+        (Thread/sleep (+ core/authorization-timeout 500))
         ;; try ignition again
         (press-brake car)
         (press-button car)
-        (Thread/sleep (+ core/ignition-button-time 1000))
+        (Thread/sleep (+ core/ignition-button-time 500))
         (is (ignition-on? car))
         (release-brake car))
 
@@ -166,7 +159,6 @@
         (press-button car)
         (release-button car)
         (release-brake car)
-        (Thread/sleep 1000)
         (is (not (power-on? car)))))))
 
 

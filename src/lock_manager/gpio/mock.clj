@@ -20,7 +20,6 @@
                                             (if (= 1 (.getStateChange e))
                                               (press-fn id)
                                               (release-fn id)))]))
-(require '[seesaw.dev :as d])
 
 (defn make-output-pin [id label low-high]
   (ss/label :id id

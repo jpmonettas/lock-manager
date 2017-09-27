@@ -17,6 +17,7 @@
 (stest/instrument)
 
 (defn car-cmp [] (:car system))
+(defn gpio-cmp [] (:gpio system))
 (defn card-r-cmp [] (:card-reader system))
 
 (Thread/setDefaultUncaughtExceptionHandler

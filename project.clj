@@ -10,7 +10,6 @@
                  [http-kit "2.2.0"]
                  [com.stuartsierra/component "0.3.2"]
                  [com.taoensso/timbre "4.10.0"]
-                 [re-frame "0.10.1"]
                  [org.clojure/test.check "0.9.0"]
                  [org.clojure/tools.namespace "0.3.0-alpha4"]
                  [com.fazecast/jSerialComm "1.3.11"]
