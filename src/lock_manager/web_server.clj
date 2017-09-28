@@ -56,14 +56,7 @@
      (DELETE "/tags/:id" [id :as req]
        :return sch/Bool
        (let [rm-tag (-> req :call-backs deref :rm-tag)]
-         (ok (rm-tag id))))
-
-     ;; Just for testing the UI
-     (POST "/random-db" []
-       (let [gen-db (gen/generate (s/gen :lock-manager.core/db))]
-         ;; TODO fix this
-         #_(re-frame.core/dispatch [:initialize-db gen-db])
-         (ok gen-db)))))) 
+         (ok (rm-tag id))))))) 
 
 (defn wrap-callbacks [call-backs next-handler]
   (fn [req]
