@@ -4,7 +4,8 @@
             [taoensso.timbre :as l]
             [lock-manager.card-reader.protocols :refer :all]
             [clojure.java.io :as io]
-            [clojure.core.async :as async])
+            [clojure.core.async :as async]
+            [lock-manager.utils :as utils])
   (:import [com.fazecast.jSerialComm SerialPort]))
 
 
@@ -19,19 +20,32 @@
     ;; ACTION=="add", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6015", SYMLINK+="card_reader"
     (let [serial-port (doto (SerialPort/getCommPort "/dev/card_reader")
                         (.setBaudRate 9600)
+                        (.setComPortTimeouts SerialPort/TIMEOUT_READ_SEMI_BLOCKING 100 0)
                         (.openPort))
+          stream (.getInputStream serial-port)
           call-backs (atom {})
           reads-ch (async/chan 1 (comp (partition-by #(= % 10))
                                        (remove #(= 1 (count %)))
-                                       (map #(String. (byte-array %)))))]
+                                       (map #(String. (byte-array %)))))
+          reader-go (atom true)]
 
-      (async/go-loop []
-        (let [buf (byte-array 1024)
-              num-read (.readBytes serial-port buf (count buf))]
-          (doseq [b (take num-read buf)]
-            (async/>! reads-ch b)))
-        (when (.isOpen serial-port)
-          (recur)))
+      (let [buf (byte-array 1024)]
+        (async/go-loop []
+          (loop []
+            (async/<! (async/timeout 100))
+            (let [bytes-available (.bytesAvailable serial-port)]
+              (when (> bytes-available 0)
+                (let [num-read (.readBytes serial-port buf bytes-available)]
+                  (doseq [b (take num-read buf)]
+                    (async/>! reads-ch b))))
+              (when (and (> bytes-available -1)
+                       @reader-go)
+                (recur))))
+          (l/error "Something happened with serial port, trying to close and reopen")
+          (.closePort serial-port)
+          (async/<! (async/timeout 1000))
+          (.openPort serial-port)
+          (when @reader-go (recur))))
       
       (async/go-loop []
         (when-let [tid (async/<! reads-ch)]
@@ -50,16 +64,19 @@
       (assoc this
              :reads-ch reads-ch
              :serial-port serial-port
-             :call-backs call-backs)))
+             :call-backs call-backs
+             :reader-go reader-go)))
   
   (stop [this]
     (async/close! (:reads-ch this))
+    (reset! (:reader-go this) false)
     (.closePort (:serial-port this))
     (l/info "[Serial] card reader component stopped.")
     (assoc this
            :reads-ch nil
            :call-backs nil
-           :serial-port nil))
+           :serial-port nil
+           :reader-ctrl-ch nil))
 
   CardReaderP
 

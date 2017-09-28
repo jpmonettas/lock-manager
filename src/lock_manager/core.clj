@@ -109,7 +109,8 @@
 (defn disable-authorized-ev [{:keys [current-time-millis]} _ db]
   (if (and (:authorized-since db)
            (> (- current-time-millis (:authorized-since db))
-              authorization-timeout))
+              (- authorization-timeout 1000))) ;; keep this because the sleep
+                                               ;; is not exactly authorization-timeout
     (dissoc db :authorized-since)
     db))
 
