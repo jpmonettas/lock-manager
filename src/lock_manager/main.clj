@@ -18,6 +18,11 @@
             [taoensso.timbre.appenders.3rd-party.rotor :refer [rotor-appender]])
   (:gen-class))
 
+;; Raspi /etc/rc.local
+;; -------------------
+;; /home/pi/umtskeeper/umtskeeper --sakisoperators "USBINTERFACE='3' OTHER='USBMODEM' USBMODEM='1199:68a3' APN='prepago.ancel' CUSTOM_APN='prepago.ancel' APN_USER='bam' APN_PASS='bam'" --sakisswitches "--sudo --console" --devicename 'telus' --log --silent --monthstart 8 --nat 'no' --httpserver &>> /home/pi/umtskeeper/error.log &
+;; nohup java -jar /home/pi/lock-manager-0.1.0-standalone.jar --card-reader serial --gpio pione &
+
 (def system nil)
 
 (defn create-system [opts]

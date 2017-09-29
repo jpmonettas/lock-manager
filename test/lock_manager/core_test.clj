@@ -25,6 +25,8 @@
             [lock-manager.utils :as utils]
             [ring.mock.request :as mock]))
 
+
+
 ;; (def card-read-gen (gen/fmap (fn [[tid card-on card-off]]
 ;;                                   [(assoc card-on 1 tid)
 ;;                                    (assoc card-off 1 tid)])
@@ -77,8 +79,3 @@
 ;;                    (doseq [e events-without-brake]
 ;;                      (rf/dispatch-sync e))
 ;;                    (nil? (:switch-power-on @fxs)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;
-;; Integration tests ;;
-;;;;;;;;;;;;;;;;;;;;;;;
-
