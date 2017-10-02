@@ -1,13 +1,13 @@
 (ns lock-manager.main
   (:require [clojure.tools.nrepl.server :as nrepl]
             [cider.nrepl :refer [cider-nrepl-handler]]
+            [clj-mqtt-component.core :refer [make-mqtt]]
             [com.stuartsierra.component :as comp]
             [lock-manager.card-reader.mock :refer [make-mock-card-reader]]
             [lock-manager.card-reader.serial :refer [make-serial-card-reader]]
             [lock-manager.car.mock :refer [make-car-mock]]
             [lock-manager.car.genius :refer [make-car-genius]]
             [lock-manager.core :refer [make-core]]
-            [lock-manager.web-server :refer [make-web-server]]
             [lock-manager.gpio.pi-one :refer [make-pi-one-gpio]]
             [lock-manager.gpio.mock :refer [make-mock-gpio]]
             [taoensso.timbre :as l]
@@ -32,19 +32,26 @@
                   (make-mock-card-reader {:ui true}))
    :car (comp/using (make-car-genius)
                     [:gpio])
-   :web-server (make-web-server {:start-server? true})
-   :core (comp/using (make-core)
-                     [:car :card-reader :web-server])
+   :core (comp/using (make-core {:car-id (:car-id opts)})
+                     [:car :card-reader :mqtt])
    :gpio (case (:gpio opts)
            "pione" (make-pi-one-gpio)
-           (make-mock-gpio))))
+           (make-mock-gpio))
+   :mqtt (make-mqtt {:url (:mqtt-url opts)
+                     :client-id (:car-id opts)})))
 
 (s/def ::card-reader-opt (s/cat :pref #{"--card-reader"}
                                 :val #{"serial" "mock"}))
 (s/def ::gpio-opt (s/cat :pref #{"--gpio"}
                          :val #{"pione" "mock"}))
+(s/def ::mqtt-url-opt (s/cat :pref #{"--mqtt-url"}
+                             :val string?))
+(s/def ::car-id-opt (s/cat :pref #{"--car-id"}
+                           :val string?))
 (s/def ::args (s/* (s/alt :card-reader ::card-reader-opt
-                          :gpio ::gpio-opt)))
+                          :gpio ::gpio-opt
+                          :mqtt-url ::mqtt-url-opt
+                          :car-id ::car-id-opt)))
 
 (defn start-system [opts]
   (alter-var-root #'system (fn [s] (comp/start (create-system opts)))))
@@ -64,7 +71,9 @@
     (if (not= conformed-opts ::s/invalid)
       (let [opts (into {} conformed-opts)
             opts' {:card-reader (-> opts :card-reader :val)
-                   :gpio (-> opts :gpio :val)}]
+                   :gpio (-> opts :gpio :val)
+                   :car-id (-> opts :car-id :val)
+                   :mqtt-url (-> opts :mqtt-url :val)}]
 
         (nrepl/start-server :handler cider-nrepl-handler
                             :port 7778

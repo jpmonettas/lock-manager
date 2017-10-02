@@ -12,7 +12,10 @@
 (defn reset []
   (com.stuartsierra.component.repl/reset))
 
-(set-init (fn [_] (main/create-system {:card-reader "mock" :gpio "mock"})))
+(set-init (fn [_] (main/create-system {:card-reader "mock"
+                                       :gpio "mock"
+                                       :car-id "dev-car"
+                                       :mqtt-url "tcp://127.0.0.1:1883"})))
 
 (stest/instrument)
 

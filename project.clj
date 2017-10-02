@@ -7,7 +7,6 @@
                  [com.pi4j/pi4j-core "1.2-SNAPSHOT"]
                  [org.clojure/tools.nrepl "0.2.12"]
                  [cider/cider-nrepl "0.15.0"]
-                 [http-kit "2.2.0"]
                  [com.stuartsierra/component "0.3.2"]
                  [com.taoensso/timbre "4.10.0"]
                  [org.clojure/test.check "0.9.0"]
@@ -16,6 +15,7 @@
                  [org.clojure/core.async "0.3.443"]
                  [metosin/compojure-api "2.0.0-alpha7"]
                  [ring/ring-mock "0.3.1"]
+                 [clj-mqtt-component "0.1.0"]
                  [seesaw "1.4.5"]]
   :repl-options {:init-ns user}
   :main ^:skip-aot lock-manager.main

@@ -10,8 +10,6 @@
                                                         release-button
                                                         make-car-mock]]
             [lock-manager.car.protocols :refer :all]
-            [lock-manager.web-server :refer [make-web-server
-                                             handler]]
             [lock-manager.card-reader.protocols :refer :all]
             [lock-manager.card-reader.mock :refer [simulate-card-on
                                                    simulate-card-off

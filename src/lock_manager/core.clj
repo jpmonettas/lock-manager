@@ -1,16 +1,14 @@
 (ns lock-manager.core
   (:require [lock-manager.card-reader.protocols :refer :all]
             [lock-manager.car.protocols :refer :all]
-            [lock-manager.web-server :refer [register-upsert-tag-call-back
-                                             register-list-tags-call-back
-                                             register-rm-tag-call-back]]
             [com.stuartsierra.component :as comp]
             [clojure.spec.alpha :as s]
             [taoensso.timbre :as l]
             [clojure.string :as str]
             [clojure.core.async :as async]
             [clojure.edn :as edn]
-            [lock-manager.utils :as utils]))
+            [lock-manager.utils :as utils]
+            [clj-mqtt-component.core :as mqtt]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; IMPORTANT! : Never call re-frame/dispatch directly, put the events in       ;;
@@ -80,17 +78,17 @@
 (defn initialize-db-ev [{:keys [read-up-edn]} [_ _ initial-db] _]
   (or read-up-edn initial-db))
 
-(defn list-tags-ev [_ [_ _ answer-id] db]
+(defn list-tags-ev [_ [_ _] db]
   (with-meta db
     {:answer (vals (:authorized-tags db))}))
 
-(defn upsert-tag-ev [_ [_ _ answer-id tag] db]
+(defn upsert-tag-ev [_ [_ _ tag] db]
   (let [db' (assoc-in db [:authorized-tags (:id tag)] tag)]
    (with-meta db'
     {:answer true
      :write-down [db-file db']})))
 
-(defn rm-tag-ev [_ [_ _ answer-id tag-id] db]
+(defn rm-tag-ev [_ [_ _ tag-id] db]
   (let [db' (update db :authorized-tags dissoc tag-id)]
     (with-meta db'
       {:answer true
@@ -219,7 +217,7 @@
 ;; Component ;;
 ;;;;;;;;;;;;;;;
 
-(defrecord Core [car card-reader web-server state-atom])
+(defrecord Core [car card-reader mqtt state-atom opts])
 
 (defn current-time-millis-cofx [] (System/currentTimeMillis))
 
@@ -243,7 +241,6 @@
                 :brake-released [[] brake-released-ev]})
 
 (def coeffects {:read-up-edn read-up-edn-cofx})
-
 
 (defn dispatch [{:keys [state-atom effects] :as core-cmp} [ev-k :as ev]]
   (l/debug "Dispatching " ev)
@@ -270,7 +267,7 @@
 
   comp/Lifecycle
   
-  (start [{:keys [car card-reader web-server] :as this}]
+  (start [{:keys [car card-reader mqtt opts] :as this}]
     (let [state-atom (atom {})
           effects {:enable-button-ignition (fn [_] (enable-ignition car))
                    :disable-button-ignition (fn [_] (disable-ignition car))
@@ -295,10 +292,18 @@
       (register-card-on-reader-fn card-reader #(dispatch this [:card-on-reader (System/currentTimeMillis) %]))
       (register-card-off-reader-fn card-reader #(dispatch this [:card-off-reader (System/currentTimeMillis) %]))
 
-      ;; Events from web server
-      (register-list-tags-call-back web-server #(dispatch this [:list-tags (System/currentTimeMillis)]))
-      (register-upsert-tag-call-back web-server #(dispatch this [:upsert-tag (System/currentTimeMillis) %]))
-      (register-rm-tag-call-back web-server #(dispatch this [:rm-tag (System/currentTimeMillis) %]))
+      (mqtt/subscribe-and-answer mqtt (str (:car-id opts) "/method-call")
+                                 (fn [[method & args :as mc]]
+                                   (l/debug "Got from mqtt " mc)
+                                   (let [answ (case method
+                                                "list-tags" {:status :ok
+                                                             :val (dispatch this [:list-tags (System/currentTimeMillis)])}
+                                                "upsert-tag" {:status :ok
+                                                              :val (dispatch this [:upsert-tag (System/currentTimeMillis) (first args)])}
+                                                "rm-tag" {:status :ok
+                                                          :val (dispatch this [:rm-tag (System/currentTimeMillis) (first args)])})]
+                                     (l/debug "Sending back to mqtt " answ)
+                                     answ)))
       
       (l/info "[Core] component started.")
 
@@ -310,7 +315,7 @@
     (l/info "[Core] component stopped.")
     this))
 
-(defn make-core []
-  (map->Core {}))
+(defn make-core [opts]
+  (map->Core {:opts opts}))
 
 
