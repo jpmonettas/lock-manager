@@ -21,12 +21,12 @@
             [clj-mqtt-component.core :refer [make-mqtt]]))
 
 (def test-system (comp/system-map
-                  :core (comp/using (core/make-core {:car-id "testCar1"})
+                  :core (comp/using (core/make-core {:client-id "testCar1"})
                                     [:car :card-reader :mqtt])
                   :car (make-car-mock)
                   :card-reader (make-mock-card-reader {:ui false})
                   :mqtt (make-mqtt {:url "tcp://127.0.0.1:1883"
-                                    :car-id "testCar1"})))
+                                    :client-id "testCar1"})))
 
 ;; Every time start with a card locked and power-off
 (defn wrap-stop-start-system [t]
