@@ -294,16 +294,29 @@
 
       (mqtt/subscribe-and-answer mqtt (str (:car-id opts) "/method-call")
                                  (fn [[method & args :as mc]]
-                                   (l/debug "Got from mqtt " mc)
-                                   (let [answ (case method
-                                                "list-tags" {:status :ok
-                                                             :val (dispatch this [:list-tags (System/currentTimeMillis)])}
-                                                "upsert-tag" {:status :ok
-                                                              :val (dispatch this [:upsert-tag (System/currentTimeMillis) (first args)])}
-                                                "rm-tag" {:status :ok
-                                                          :val (dispatch this [:rm-tag (System/currentTimeMillis) (first args)])})]
-                                     (l/debug "Sending back to mqtt " answ)
-                                     answ)))
+                                   (try
+                                     (l/debug "Got from mqtt " mc)
+                                     (let [answ (case method
+                                                  "list-tags" {:status :ok
+                                                               :val (dispatch this [:list-tags (System/currentTimeMillis)])}
+                                                  "upsert-tag" {:status :ok
+                                                                :val (dispatch this [:upsert-tag (System/currentTimeMillis) (first args)])}
+                                                  "rm-tag" {:status :ok
+                                                            :val (dispatch this [:rm-tag (System/currentTimeMillis) (first args)])}
+                                                  "lock-doors" {:status :ok
+                                                               :val (do (lock-doors car) true)}
+                                                  "unlock-doors" {:status :ok
+                                                                 :val (do (unlock-doors car) true)}
+                                                  "power-on" {:status :ok
+                                                              :val (do (switch-power-on car) true)}
+                                                  "power-off" {:status :ok
+                                                               :val (do (switch-power-off car) true)})]
+                                       (l/debug "Sending back to mqtt " answ)
+                                       answ)
+                                     (catch Exception e
+                                       (l/error e)
+                                       {:status :error
+                                        :error (.getMessage e)}))))
       
       (l/info "[Core] component started.")
 
