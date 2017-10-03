@@ -38,7 +38,11 @@
            "pione" (make-pi-one-gpio)
            (make-mock-gpio))
    :mqtt (make-mqtt {:url (:mqtt-url opts)
-                     :client-id (:car-id opts)})))
+                     :client-id (:car-id opts)
+                     :keep-alive-interval 60
+                     :on-connection-lost (fn [e] (l/warn "MQTT connection lost." e))
+                     :on-connect-complete (fn [client reconnect? uri]
+                                            (l/info "MQTT connection created to " uri " with id " (:car-id opts) " with reconnect set to " reconnect?))})))
 
 (s/def ::card-reader-opt (s/cat :pref #{"--card-reader"}
                                 :val #{"serial" "mock"}))

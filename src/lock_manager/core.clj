@@ -35,7 +35,6 @@
 (s/def :db/tag (s/keys :req-un [:rfid.tag/id
                                 :db.tag/owner-name
                                 :db.tag/intervals]))
-(s/def :db/door-unlock-method #{:both :only-key})
 (s/def :db/authorized-tags (s/map-of :rfid.tag/id :db/tag))
 (s/def :db/reading-tag :rfid.tag/id)
 (s/def :db/brake-pressed? boolean?)
@@ -45,8 +44,7 @@
 (s/def :db/reading-tag-timestamp pos-int?)
 (s/def :db/authorized-since pos-int?)
 (s/def :db/button-pressed-timestamp pos-int?)
-(s/def ::db (s/keys :req-un [:db/door-unlock-method
-                             :db/authorized-tags]
+(s/def ::db (s/keys :req-un [:db/authorized-tags]
                     :opt-un [:db/reading-tag
                              :db/reading-tag-timestamp
                              :db/button-pressed-timestamp
@@ -62,7 +60,6 @@
 (s/def :evt/upsert-tag                (s/tuple #{:upsert-tag}                :db/tag))
 (s/def :evt/card-on-reader         (s/tuple #{:card-on-reader}         :rfid.tag/id))
 (s/def :evt/card-off-reader        (s/tuple #{:card-off-reader}        :rfid.tag/id))
-(s/def :evt/set-door-unlock-method (s/tuple #{:set-door-unlock-method} :db/door-unlock-method))
 (s/def :evt/button-pressed         (s/tuple #{:button-pressed}))
 (s/def :evt/button-released        (s/tuple #{:button-released}))
 (s/def :evt/brake-pressed          (s/tuple #{:brake-pressed}))
@@ -95,14 +92,9 @@
        :write-down [db-file db']})))
 
 (defn card-on-reader-ev [_ [_ ev-t tag-id] db]
-  (let [db' (cond-> (assoc db
-                           :reading-tag tag-id
-                           :reading-tag-timestamp ev-t)
-
-              (contains? (:authorized-tags db) tag-id)
-              (assoc :authorized-since ev-t))]
-    (with-meta db'
-      {:dispatch-later [authorization-timeout [:disable-authorized]]})))
+  (assoc db
+         :reading-tag tag-id
+         :reading-tag-timestamp ev-t))
 
 (defn disable-authorized-ev [_ [_ ev-t] db]
   (if (and (:authorized-since db)
@@ -112,33 +104,33 @@
     (dissoc db :authorized-since)
     db))
 
+(defn authorize-ev [_ [_ ev-t] db]
+  (-> db
+      (assoc :authorized-since ev-t)
+      (vary-meta assoc :dispatch-later [authorization-timeout [:disable-authorized]])))
+
 (defn card-off-reader-ev [_ [_ ev-t tag-id] db]
-  (let [authorized? (contains? (:authorized-tags db) tag-id)
+  (let [tag-authorized? (contains? (:authorized-tags db) tag-id)
         duration (- ev-t (:reading-tag-timestamp db))]
     
-    (when (not authorized?) (l/info "Unauthorized try for " tag-id))
+    (when (not tag-authorized?) (l/info "Unauthorized try for " tag-id))
     
     (cond-> db
 
-      authorized?
-      (assoc :authorized-since ev-t)
+      tag-authorized?
+      (vary-meta assoc :dispatch [:authorize])
       
-      (and (= (:door-unlock-method db) :both)
-           authorized?
+      (and tag-authorized?
            (unlocking-duration? duration))
       (vary-meta assoc :unlock-doors true)
 
-      (and authorized?
+      (and tag-authorized?
            (locking-duration? duration))
       (vary-meta assoc :lock-doors true)
       
       true
-      (dissoc :reading-tag))))
-
-(defn set-door-unlock-method-ev
-  "For setting a new doors unlock method."
-  [_ [_ _ unlock-method] db]
-  (assoc db :door-unlock-method unlock-method))
+      (dissoc :reading-tag
+              :reading-tag-timestamp))))
 
 (defn button-pressed-ev
   "Every time panel button is pressed."
@@ -229,12 +221,12 @@
 (def ev-routes {:initialize-db [[[:read-up-edn db-file]] initialize-db-ev]
                 :button-pressed-check [[] button-pressed-check-ev]
                 :disable-authorized [[] disable-authorized-ev]
+                :authorize [[] authorize-ev]
                 :list-tags [[] list-tags-ev]
                 :upsert-tag [[] upsert-tag-ev]
                 :rm-tag [[] rm-tag-ev]
                 :card-on-reader [[] card-on-reader-ev]
                 :card-off-reader [[] card-off-reader-ev]
-                :set-door-unlock-method [[] set-door-unlock-method-ev]
                 :button-pressed [[] button-pressed-ev]
                 :button-released [[] button-released-ev]
                 :brake-pressed [[] brake-pressed-ev]
@@ -304,13 +296,11 @@
                                                   "rm-tag" {:status :ok
                                                             :val (dispatch this [:rm-tag (System/currentTimeMillis) (first args)])}
                                                   "lock-doors" {:status :ok
-                                                               :val (do (lock-doors car) true)}
-                                                  "unlock-doors" {:status :ok
-                                                                 :val (do (unlock-doors car) true)}
-                                                  "power-on" {:status :ok
-                                                              :val (do (switch-power-on car) true)}
-                                                  "power-off" {:status :ok
-                                                               :val (do (switch-power-off car) true)})]
+                                                                :val (do (lock-doors car) true)}
+                                                  "authorize-and-unlock-doors" {:status :ok
+                                                                  :val (do (dispatch this [:authorize (System/currentTimeMillis)])
+                                                                           (unlock-doors car)
+                                                                           true)})]
                                        (l/debug "Sending back to mqtt " answ)
                                        answ)
                                      (catch Exception e
@@ -320,8 +310,7 @@
       
       (l/info "[Core] component started.")
 
-      (dispatch this [:initialize-db {:door-unlock-method :both
-                                      :authorized-tags {}}])
+      (dispatch this [:initialize-db {:authorized-tags {}}])
       this))
   
   (stop [this]

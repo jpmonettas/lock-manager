@@ -34,8 +34,7 @@
   (lock-doors (:car test-system))
   (switch-power-off (:car test-system))
   (core/dispatch (:core test-system)
-                 [:initialize-db 0 {:door-unlock-method :both
-                                    :authorized-tags {"7564F8C2" {}}}])
+                 [:initialize-db 0 {:authorized-tags {"7564F8C2" {}}}])
   (t)
   (alter-var-root #'test-system comp/stop))
 
