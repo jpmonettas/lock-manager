@@ -104,10 +104,12 @@
     (dissoc db :authorized-since)
     db))
 
-(defn authorize-ev [_ [_ ev-t] db]
+(defn authorize-ev [_ [_ ev-t tag-id] db]
   (-> db
       (assoc :authorized-since ev-t)
-      (vary-meta assoc :dispatch-later [authorization-timeout [:disable-authorized]])))
+      (vary-meta assoc
+                 :dispatch-later [authorization-timeout [:disable-authorized]]
+                 :report-authorization tag-id)))
 
 (defn card-off-reader-ev [_ [_ ev-t tag-id] db]
   (let [tag-authorized? (contains? (:authorized-tags db) tag-id)
@@ -118,7 +120,7 @@
     (cond-> db
 
       tag-authorized?
-      (vary-meta assoc :dispatch [:authorize])
+      (vary-meta assoc :dispatch [:authorize tag-id])
       
       (and tag-authorized?
            (unlocking-duration? duration))
@@ -268,7 +270,8 @@
                    :switch-power-off (fn [_] (switch-power-off car))
                    :switch-power-on (fn [_] (switch-power-on car))
                    :write-down (fn [[file-path data]]
-                                 (spit file-path data :append false))}
+                                 (spit file-path data :append false))
+                   :report-authorization (fn [tag-id] (mqtt/publish mqtt (str (:car-id opts) "/authorization") tag-id))}
 
           this (assoc this
                       :state-atom state-atom
@@ -298,7 +301,7 @@
                                                   "lock-doors" {:status :ok
                                                                 :val (do (lock-doors car) true)}
                                                   "authorize-and-unlock-doors" {:status :ok
-                                                                  :val (do (dispatch this [:authorize (System/currentTimeMillis)])
+                                                                  :val (do (dispatch this [:authorize (System/currentTimeMillis) "00000000"]) ;; cel tag id
                                                                            (unlock-doors car)
                                                                            true)})]
                                        (l/debug "Sending back to mqtt " answ)
