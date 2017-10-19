@@ -4,6 +4,7 @@
             [clj-mqtt-component.core :refer [make-mqtt]]
             [com.stuartsierra.component :as comp]
             [lock-manager.card-reader.mock :refer [make-mock-card-reader]]
+            [lock-manager.gps.gpsd :refer [make-gpsd]]
             [lock-manager.card-reader.serial :refer [make-serial-card-reader]]
             [lock-manager.car.mock :refer [make-car-mock]]
             [lock-manager.car.genius :refer [make-car-genius]]
@@ -42,7 +43,9 @@
                      :keep-alive-interval 60
                      :on-connection-lost (fn [e] (l/warn "MQTT connection lost." e))
                      :on-connect-complete (fn [client reconnect? uri]
-                                            (l/info "MQTT connection created to " uri " with id " (:car-id opts) " with reconnect set to " reconnect?))})))
+                                            (l/info "MQTT connection created to " uri " with id " (:car-id opts) " with reconnect set to " reconnect?))})
+   :gps (comp/using (make-gpsd (:car-id opts))
+                    [:mqtt])))
 
 (s/def ::card-reader-opt (s/cat :pref #{"--card-reader"}
                                 :val #{"serial" "mock"}))

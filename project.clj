@@ -16,7 +16,9 @@
                  [metosin/compojure-api "2.0.0-alpha7"]
                  [ring/ring-mock "0.3.1"]
                  [clj-mqtt-component "0.1.0"]
-                 [seesaw "1.4.5"]]
+                 [seesaw "1.4.5"]
+                 [de.taimos/gpsd4java "1.10"]
+                 [factual/geo "1.2.0"]]
   :repl-options {:init-ns user}
   :main ^:skip-aot lock-manager.main
   :target-path "target/%s"
